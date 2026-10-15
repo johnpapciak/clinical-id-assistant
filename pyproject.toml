@@ -9,6 +9,7 @@ description = "Educational infectious-disease workflow using synthetic patient d
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "openai-agents>=0.24,<0.25",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
 ]

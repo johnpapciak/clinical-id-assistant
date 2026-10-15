@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -26,3 +27,15 @@ def write_dataset(tmp_path, monkeypatch):
         return path
 
     return write
+
+
+@pytest.fixture
+def agent_model(monkeypatch, tmp_path):
+    from agents import OpenAIResponsesModel
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-real")
+    model = AsyncMock(side_effect=AssertionError("Live model calls are disabled in tests"))
+    monkeypatch.setattr(OpenAIResponsesModel, "get_response", model)
+    return model
