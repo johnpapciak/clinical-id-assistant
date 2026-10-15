@@ -98,26 +98,64 @@ serialized from the deterministic service models. The full patient summary used
 for local validation is not sent to the model.
 
 The instructions ask the model to inspect microbiology first and retrieve other
-sections only when relevant. Compare the examples to observe tool selection:
-`Tool requested:` and `Tool completed:` lines go to stderr while one final review
-goes to stdout. Sequences can vary between patients and between runs; the
-application does not hardcode different tool plans for different patients.
+sections only when relevant. Tool choices can vary between patients and runs;
+the application does not hardcode different plans for different patients. The
+SDK executes requested functions locally and returns their results to the model
+until it produces a final summary or reaches the eight-turn limit.
 
-The agent must cite tool sources, distinguish missing from unreviewed data, and
-avoid diagnoses, prescriptions, or recommendations to change medication. Every
-successful output is prefixed with a fixed decision-support notice. Its only
-tools are read-only retrieval functions, with no handoffs or action tools.
-These instructions do not prove that generated text is clinically safe or free
-of unsupported claims; a human must review the response against its sources.
+The final result is a Pydantic `ClinicalSummary`, printed as JSON on stdout. It
+includes the newest microbiology result's ID, organism and specimen, relevant
+typed medication/allergy/lab/infection records, cited findings, missing context,
+clinician-review items, evidence sources, and a fixed decision-support disclaimer.
+Missing scalar information is `null`; missing collections are empty lists.
 
-The SDK executes model-requested functions locally, sends their JSON results
-back to the model, and repeats until it returns a final response or reaches the
-eight-turn limit. Tool failures abort the run. SDK tracing and request response
-storage are disabled, and no session or database is used.
+Python verifies patient identity, the newest culture fields, exact membership of
+clinical records in the tools actually called, and finding citations using
+zero-based indices into each tool's `records` array. `evidence_sources` lists all
+tools called, even those returning empty lists. Unsupported structured facts or
+invalid references fail the investigation. This does not verify the meaning of
+free-text findings or review questions; those still need human source checking.
+The agent must not diagnose, prescribe, or recommend medication changes.
 
-Tests use mocked model responses, including two different tool sequences through
-the actual SDK runner. `python -m pytest` needs no API credentials and makes no
-live model requests. Mocked tests verify orchestration, not live clinical output.
+## Tracing and development logs
+
+The same command enables the SDK's standard tracing and prints JSON application
+events to stderr. Keep `IDA_LOG_LEVEL=INFO` to see start, tool, and completion
+events. A completed event includes `trace_id` and a clickable `trace_url`.
+
+```sh
+python -m infectious_disease_assistant.agent_demo PATIENT_001 \
+  > /tmp/clinical-summary.json 2> /tmp/investigation.jsonl
+cat /tmp/clinical-summary.json
+cat /tmp/investigation.jsonl
+```
+
+Open the emitted link, or find the trace ID in the
+[OpenAI Traces dashboard](https://platform.openai.com/traces) in the project used
+by your API key. The workflow is named **Synthetic infectious-disease investigation**:
+
+- Model/response spans show model calls and their inputs and outputs.
+- Function spans show tool names, JSON arguments, and returned JSON records.
+  Arguments are `{}` because patient selection comes from local SDK context;
+  patient identity appears in trace metadata and tool results.
+- The `validated_clinical_summary` SDK span contains the final validated JSON.
+
+This development workflow enables response storage and detailed trace payloads,
+which intentionally include synthetic clinical data. Application logs contain
+only event names, synthetic patient IDs, trace IDs/links, tool names, record
+counts, durations, and error types. They do not contain tool arguments/results,
+clinical summaries, or API keys. Failures before patient/configuration validation
+have application logs but no remote trace.
+
+The CLI calls the SDK's `flush_traces()` before exit. Export is best-effort;
+check SDK export errors if a trace does not appear. Ensure the shell variable
+`OPENAI_AGENTS_DISABLE_TRACING` is unset or `0`, API access is configured, and the
+project supports tracing. No custom exporter or tracing backend is installed.
+See the [SDK tracing documentation](https://openai.github.io/openai-agents-python/tracing/).
+
+`python -m pytest` needs no API credentials and makes no live model or trace
+requests. Tests mock network responses while exercising the actual SDK runner,
+structured-output parser, and native spans through a test-only in-memory processor.
 
 ## Architecture and scope
 
@@ -134,6 +172,7 @@ controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RA
 and produces a structured summary for human approval before any simulated action.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
-This milestone adds one coordinator agent and read-only function tools while
-preserving the deterministic services and lookup CLI. FHIR integration,
-databases, RAG, FastAPI, multiple agents, and a frontend are deferred.
+This milestone adds structured summaries, SDK tracing, and application event
+logs to the single coordinator while preserving deterministic retrieval.
+FHIR integration, databases, RAG, FastAPI, multiple agents, and a frontend remain
+deferred.
