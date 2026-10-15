@@ -1,4 +1,5 @@
 from datetime import date
+from copy import deepcopy
 
 import pytest
 from pydantic import BaseModel
@@ -157,50 +158,58 @@ def test_missing_optional_information():
     assert summary.encounters[0].encounter_id == "ENCOUNTER_005"
 
 
-def test_recent_lab_boundaries_and_newest_first(write_dataset):
-    write_dataset({
-        "reference_date": "2026-10-15",
-        "patients": [{
-            "patient_id": "PATIENT_001",
-            "labs": [
-                {"name": name, "value": 1.0, "unit": "mg/dL", "collected_on": collected_on}
-                for name, collected_on in [
-                    ("too old", "2026-09-14"), ("boundary", "2026-09-15"),
-                    ("future", "2026-10-16"), ("today", "2026-10-15"),
-                ]
-            ],
-        }],
-    })
+def test_recent_lab_boundaries_and_newest_first(fhir_api):
+    resources = fhir_api.store.resources
+    template = resources["Observation/patient-001-lab-0"]
+    for key in list(resources):
+        if key.startswith("Observation/patient-001-lab-"):
+            del resources[key]
+    for index, (name, collected_on) in enumerate([
+        ("too old", "2026-09-14"), ("boundary", "2026-09-15"),
+        ("future", "2026-10-16"), ("today", "2026-10-15"),
+    ]):
+        resource = deepcopy(template)
+        resource.update(id=f"boundary-lab-{index}", effectiveDateTime=collected_on)
+        resource["code"]["text"] = name
+        resources[f"Observation/{resource['id']}"] = resource
 
     assert [item.name for item in get_recent_labs("PATIENT_001")] == ["today", "boundary"]
 
 
-def test_reference_date_filters_and_orders_history(write_dataset):
-    write_dataset({
-        "reference_date": "2026-10-15",
-        "patients": [{
-            "patient_id": "PATIENT_001",
-            "microbiology_results": [
-                {"result_id": name, "specimen": "blood", "collected_on": day, "outcome": "no_growth"}
-                for name, day in [("old", "2026-01-01"), ("future", "2026-10-16"), ("today", "2026-10-15")]
-            ],
-            "previous_infections": [
-                {"diagnosis": name, "organism": "Escherichia coli", "site": "urinary tract", "diagnosed_on": day}
-                for name, day in [
-                    ("old", "2026-01-01"), ("future", "2026-10-16"),
-                    ("today", "2026-10-15"), ("yesterday", "2026-10-14"),
-                ]
-            ],
-            "diagnoses": [
-                {"name": "future diagnosis", "recorded_on": "2026-10-16"},
-                {"name": "current diagnosis", "recorded_on": "2026-10-15"},
-            ],
-            "encounters": [
-                {"encounter_id": "future", "occurred_on": "2026-10-16", "setting": "outpatient", "reason": "visit"},
-                {"encounter_id": "today", "occurred_on": "2026-10-15", "setting": "outpatient", "reason": "visit"},
-            ],
-        }],
-    })
+def test_reference_date_filters_and_orders_history(fhir_api):
+    resources = fhir_api.store.resources
+    culture = deepcopy(resources["DiagnosticReport/micro-004-recent"])
+    history = resources["Condition/patient-001-history-0"]
+    diagnosis = resources["Condition/patient-001-diagnosis-0"]
+    encounter = resources["Encounter/encounter-001"]
+    for key, resource in list(resources.items()):
+        if resource["resourceType"] in {"DiagnosticReport", "Condition", "Encounter"} and resource["subject"]["reference"] == "Patient/patient-001":
+            del resources[key]
+    culture["subject"]["reference"] = "Patient/patient-001"
+    culture["specimen"] = [{"reference": "Specimen/micro-001-recent-specimen"}]
+    for index, (name, day) in enumerate([("old", "2026-01-01"), ("future", "2026-10-16"), ("today", "2026-10-15")]):
+        resource = deepcopy(culture)
+        resource.update(id=f"order-report-{index}", effectiveDateTime=day)
+        resource["identifier"][0]["value"] = name
+        resources[f"DiagnosticReport/{resource['id']}"] = resource
+    for index, (name, day) in enumerate([
+        ("old", "2026-01-01"), ("future", "2026-10-16"),
+        ("today", "2026-10-15"), ("yesterday", "2026-10-14"),
+    ]):
+        resource = deepcopy(history)
+        resource.update(id=f"order-history-{index}", recordedDate=day, onsetDateTime=day)
+        resource["code"]["text"] = name
+        resources[f"Condition/{resource['id']}"] = resource
+    for index, (name, day) in enumerate([("future", "2026-10-16"), ("current", "2026-10-15")]):
+        resource = deepcopy(diagnosis)
+        resource.update(id=f"order-diagnosis-{index}", recordedDate=day)
+        resource["code"]["text"] = name + " diagnosis"
+        resources[f"Condition/{resource['id']}"] = resource
+        resource = deepcopy(encounter)
+        resource["id"] = f"order-encounter-{index}"
+        resource["identifier"][0]["value"] = "today" if name == "current" else name
+        resource["period"]["start"] = day
+        resources[f"Encounter/{resource['id']}"] = resource
     summary = get_patient_summary("PATIENT_001")
 
     assert [item.result_id for item in summary.microbiology_results] == ["today", "old"]

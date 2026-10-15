@@ -1,9 +1,12 @@
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import parse_qs
 from unittest.mock import AsyncMock
 
 import pytest
+import httpx
 from agents.tracing import TracingProcessor, set_trace_processors
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -54,23 +57,35 @@ def sdk_traces():
 @pytest.fixture(autouse=True)
 def configure_synthetic_data(monkeypatch):
     monkeypatch.setenv("IDA_DATA_DIR", str(DATA_DIR))
+    monkeypatch.setenv("IDA_FHIR_BASE_URL", "http://127.0.0.1:8765/fhir")
 
 
 @pytest.fixture
-def synthetic_payload():
-    return json.loads((DATA_DIR / "patients.json").read_text(encoding="utf-8"))
+def fhir_bundle():
+    return json.loads((DATA_DIR / "fhir" / "bundle.json").read_text(encoding="utf-8"))
 
 
-@pytest.fixture
-def write_dataset(tmp_path, monkeypatch):
-    monkeypatch.setenv("IDA_DATA_DIR", str(tmp_path))
+@pytest.fixture(autouse=True)
+def fhir_api(monkeypatch):
+    from infectious_disease_assistant.fhir.server import handle_request, load_fixtures
 
-    def write(payload):
-        path = tmp_path / "patients.json"
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        return path
+    api = SimpleNamespace(store=load_fixtures(DATA_DIR / "fhir" / "bundle.json"), requests=[], responses={})
 
-    return write
+    def respond(request):
+        api.requests.append(request)
+        override = api.responses.get(request.url.path)
+        if override is not None:
+            return override(request) if callable(override) else override
+        status, payload = handle_request(api.store, request.method, request.url.path,
+                                         parse_qs(request.url.query.decode(), keep_blank_values=True))
+        return httpx.Response(status, json=payload, headers={"Content-Type": "application/fhir+json"})
+
+    def client():
+        from infectious_disease_assistant.config import Settings
+        return httpx.Client(base_url=Settings().fhir_base_url.rstrip("/") + "/", transport=httpx.MockTransport(respond))
+
+    monkeypatch.setattr("infectious_disease_assistant.fhir.client.create_http_client", client)
+    return api
 
 
 @pytest.fixture

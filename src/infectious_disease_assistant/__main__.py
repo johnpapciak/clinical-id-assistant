@@ -3,7 +3,7 @@ import sys
 
 from pydantic import ValidationError
 
-from infectious_disease_assistant.data_loader import DataLoadError
+from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.services.patients import (
     InvalidPatientIdError,
     PatientNotFoundError,
@@ -18,7 +18,7 @@ def main() -> int:
     try:
         patient_id = args.patient_id if args.patient_id is not None else input("Patient ID: ")
         summary = get_patient_summary(patient_id)
-    except (InvalidPatientIdError, PatientNotFoundError, DataLoadError, ValidationError) as error:
+    except (InvalidPatientIdError, PatientNotFoundError, FhirError, ValidationError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
     except EOFError:

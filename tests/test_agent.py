@@ -13,7 +13,7 @@ from infectious_disease_assistant.agent import (
     AgentDemoError,
     investigate_patient,
 )
-from infectious_disease_assistant.data_loader import DataLoadError
+from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
 from infectious_disease_assistant.services import patients
 from infectious_disease_assistant.services.patients import InvalidPatientIdError, PatientNotFoundError
@@ -156,13 +156,13 @@ def test_service_failure_aborts_run_before_final_response(agent_model, monkeypat
     ]
 
     def fail_lookup(patient_id):
-        raise DataLoadError("Synthetic fixture unavailable")
+        raise FhirError("Synthetic fixture unavailable")
 
     monkeypatch.setattr(patients, "get_microbiology_results", fail_lookup)
 
     with pytest.raises(UserError, match="Synthetic fixture unavailable") as caught:
         asyncio.run(investigate_patient("PATIENT_001"))
-    assert isinstance(caught.value.__cause__, DataLoadError)
+    assert isinstance(caught.value.__cause__, FhirError)
     assert agent_model.await_count == 1
 
 

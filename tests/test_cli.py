@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import httpx
 
 import pytest
 
@@ -9,15 +10,19 @@ from infectious_disease_assistant.models.patient import PatientSummary
 from infectious_disease_assistant.services.patients import get_patient_summary
 
 
-def test_module_entry_point(tmp_path):
-    result = subprocess.run(
-        [sys.executable, "-m", "infectious_disease_assistant", "PATIENT_001"],
-        cwd=tmp_path, capture_output=True, text=True, check=False,
-    )
+def test_lookup_command(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["infectious_disease_assistant", "PATIENT_001"])
+    assert main() == 0
+    result = capsys.readouterr()
+    assert result.err == ""
+    assert PatientSummary.model_validate_json(result.out) == get_patient_summary("PATIENT_001")
 
+
+def test_module_entry_point_help(tmp_path):
+    result = subprocess.run([sys.executable, "-m", "infectious_disease_assistant", "--help"],
+                            cwd=tmp_path, capture_output=True, text=True, check=False)
     assert result.returncode == 0
-    assert result.stderr == ""
-    assert PatientSummary.model_validate_json(result.stdout) == get_patient_summary("PATIENT_001")
+    assert "patient_id" in result.stdout
 
 
 def test_interactive_prompt(monkeypatch, capsys):
@@ -51,12 +56,12 @@ def test_lookup_errors(monkeypatch, capsys, patient_id, message):
     assert "Traceback" not in output.err
 
 
-def test_missing_data_error(monkeypatch, tmp_path, capsys):
+def test_fhir_endpoint_error(monkeypatch, fhir_api, capsys):
     monkeypatch.setattr(sys, "argv", ["infectious_disease_assistant", "PATIENT_001"])
-    monkeypatch.setenv("IDA_DATA_DIR", str(tmp_path))
+    fhir_api.responses["/fhir/metadata"] = httpx.Response(503, json={"resourceType": "OperationOutcome"})
 
     assert main() == 1
-    assert "Could not load synthetic patient data" in capsys.readouterr().err
+    assert "FHIR endpoint returned HTTP 503" in capsys.readouterr().err
 
 
 def test_invalid_configuration_error(monkeypatch, capsys):
