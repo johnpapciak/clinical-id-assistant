@@ -25,6 +25,10 @@ variables and an optional `.env` file in the working directory. Environment
 variables take precedence. See `.env.example` for defaults. Keep secrets out of
 version control; local `.env` files are ignored.
 
+`AgentSettings` additionally requires `OPENAI_MODEL` and `OPENAI_API_KEY`, read
+from the environment or `.env`. These have no code defaults. The API key is a
+Pydantic `SecretStr`; ordinary deterministic lookups need neither setting.
+
 ```python
 from infectious_disease_assistant.config import Settings
 
@@ -73,12 +77,55 @@ newest first. No infection is inferred from a positive culture, and no treatment
 recommendations are generated. Missing age is `None`; missing collections become
 empty lists. Empty lists mean no entries recorded, not confirmed clinical absence.
 
+## Single-agent demo
+
+Install the updated dependencies with `python -m pip install -e '.[dev]'`. Set
+`OPENAI_MODEL` to a model supporting function tools and put your `OPENAI_API_KEY`
+in the environment or your ignored local `.env`. `.env.example` provides an
+example model name and leaves the key blank.
+
+```sh
+python -m infectious_disease_assistant.agent_demo PATIENT_001
+python -m infectious_disease_assistant.agent_demo PATIENT_004
+```
+
+This command makes live OpenAI API calls. It validates the patient locally, then
+sends only a synthetic patient ID and a new-microbiology-result notification.
+The model chooses which of the five tools to call. Each tool is bound to the
+selected patient through local SDK context; the model cannot select another ID.
+Tool results include the patient ID, dataset reference date, and JSON records
+serialized from the deterministic service models. The full patient summary used
+for local validation is not sent to the model.
+
+The instructions ask the model to inspect microbiology first and retrieve other
+sections only when relevant. Compare the examples to observe tool selection:
+`Tool requested:` and `Tool completed:` lines go to stderr while one final review
+goes to stdout. Sequences can vary between patients and between runs; the
+application does not hardcode different tool plans for different patients.
+
+The agent must cite tool sources, distinguish missing from unreviewed data, and
+avoid diagnoses, prescriptions, or recommendations to change medication. Every
+successful output is prefixed with a fixed decision-support notice. Its only
+tools are read-only retrieval functions, with no handoffs or action tools.
+These instructions do not prove that generated text is clinically safe or free
+of unsupported claims; a human must review the response against its sources.
+
+The SDK executes model-requested functions locally, sends their JSON results
+back to the model, and repeats until it returns a final response or reaches the
+eight-turn limit. Tool failures abort the run. SDK tracing and request response
+storage are disabled, and no session or database is used.
+
+Tests use mocked model responses, including two different tool sequences through
+the actual SDK runner. `python -m pytest` needs no API credentials and makes no
+live model requests. Mocked tests verify orchestration, not live clinical output.
+
 ## Architecture and scope
 
 The package uses a `src/` layout. `config.py` holds configuration; `models/`
 defines Pydantic data contracts, `data_loader.py` reads and validates JSON, and
-`services/` retrieves typed patient information. `tools/` remains reserved for
-future controlled capabilities. `data/` contains five synthetic patient fixtures.
+`services/` retrieves typed patient information. `tools/patient_tools.py` adds SDK
+wrappers, `agent.py` configures one coordinator and its run loop, and
+`agent_demo.py` provides the agent CLI. `data/` contains five synthetic fixtures.
 Each service call loads a fresh dataset; this small project needs no cache,
 repository interface, or database.
 
@@ -87,6 +134,6 @@ controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RA
 and produces a structured summary for human approval before any simulated action.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
-This milestone adds synthetic fixtures, deterministic services, a lookup CLI,
-and tests while preserving the original packaging and import smoke test. LLMs,
-agents, FHIR integration, databases, RAG, FastAPI, and a frontend are deferred.
+This milestone adds one coordinator agent and read-only function tools while
+preserving the deterministic services and lookup CLI. FHIR integration,
+databases, RAG, FastAPI, multiple agents, and a frontend are deferred.
