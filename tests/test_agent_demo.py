@@ -7,21 +7,22 @@ from agents.exceptions import MaxTurnsExceeded
 from openai import OpenAIError
 
 from infectious_disease_assistant import agent_demo
-from infectious_disease_assistant.agent import DECISION_SUPPORT_NOTICE, AgentDemoError
+from infectious_disease_assistant.agent import AgentDemoError
+from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
 
 
-def test_cli_prints_one_review(agent_model, monkeypatch, capsys):
+def test_cli_prints_one_review(agent_model, monkeypatch, capsys, make_clinical_summary, sdk_traces):
     monkeypatch.setattr(sys, "argv", ["agent_demo", "PATIENT_001"])
-    run = AsyncMock(return_value=f"{DECISION_SUPPORT_NOTICE}\n\nMock summary.")
+    expected = make_clinical_summary()
+    run = AsyncMock(return_value=expected)
     monkeypatch.setattr(agent_demo, "investigate_patient", run)
 
     assert agent_demo.main() == 0
     output = capsys.readouterr()
-    assert output.out.count(DECISION_SUPPORT_NOTICE) == 1
-    assert output.out.endswith("Mock summary.\n")
+    assert ClinicalSummary.model_validate_json(output.out) == expected
     assert output.err == ""
     assert run.await_args.args == ("PATIENT_001",)
-    assert isinstance(run.await_args.kwargs["hooks"], agent_demo.ToolUsageHooks)
+    assert sdk_traces.flush_count == 1
 
 
 @pytest.mark.parametrize("patient_id, message", [

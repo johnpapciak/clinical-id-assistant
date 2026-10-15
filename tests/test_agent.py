@@ -4,39 +4,42 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from agents import ModelResponse, Runner, Usage
-from agents.exceptions import MaxTurnsExceeded, UserError
-from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
+from agents import Runner
+from agents.exceptions import MaxTurnsExceeded, ModelBehaviorError, UserError
+from openai.types.responses import Response, ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
 
 from infectious_disease_assistant.agent import (
-    DECISION_SUPPORT_NOTICE,
     MAX_AGENT_TURNS,
     AgentDemoError,
     investigate_patient,
 )
-from infectious_disease_assistant.agent_demo import ToolUsageHooks
 from infectious_disease_assistant.data_loader import DataLoadError
+from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
 from infectious_disease_assistant.services import patients
 from infectious_disease_assistant.services.patients import InvalidPatientIdError, PatientNotFoundError
+from infectious_disease_assistant.services.summary_validation import SummaryEvidenceError
 from infectious_disease_assistant.tools.patient_tools import PATIENT_TOOLS
 
 
 def tool_response(names, turn=0):
-    return ModelResponse(
+    return Response(
         output=[ResponseFunctionToolCall(
             type="function_call", name=name, arguments="{}", call_id=f"call-{turn}-{index}",
         ) for index, name in enumerate(names)],
-        usage=Usage(), response_id=None,
+        id=f"resp-tool-{turn}", created_at=0, model="test-model", object="response",
+        parallel_tool_calls=True, tool_choice="auto", tools=[],
     )
 
 
-def final_response(text):
-    return ModelResponse(
+def final_response(summary):
+    text = summary.model_dump_json() if isinstance(summary, ClinicalSummary) else summary
+    return Response(
         output=[ResponseOutputMessage(
             id="message-final", type="message", role="assistant", status="completed",
             content=[ResponseOutputText(type="output_text", text=text, annotations=[])],
         )],
-        usage=Usage(), response_id=None,
+        id="resp-final", created_at=0, model="test-model", object="response",
+        parallel_tool_calls=True, tool_choice="auto", tools=[],
     )
 
 
@@ -44,25 +47,28 @@ def final_response(text):
     ("PATIENT_001", [["get_microbiology_results"], ["get_medications", "get_allergies", "get_recent_labs", "get_previous_infections"]]),
     ("PATIENT_004", [["get_microbiology_results"]]),
 ])
-def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, capsys):
+def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, caplog, sdk_traces, make_clinical_summary):
+    caplog.set_level("INFO", logger="infectious_disease_assistant")
+    requested = [name for names in plan for name in names]
+    expected = make_clinical_summary(patient_id, requested)
     agent_model.side_effect = [
         *(tool_response(names, turn) for turn, names in enumerate(plan)),
-        final_response("Mock review of synthetic tool data for clinician review."),
+        final_response(expected),
     ]
 
-    review = asyncio.run(investigate_patient(patient_id, hooks=ToolUsageHooks()))
+    review = asyncio.run(investigate_patient(patient_id))
 
-    assert review.startswith(DECISION_SUPPORT_NOTICE)
-    assert review.count("Mock review") == 1
+    assert review == expected
+    assert review.disclaimer == CLINICAL_DISCLAIMER
     assert agent_model.await_count == len(plan) + 1
-    requested = [name for names in plan for name in names]
-    logs = capsys.readouterr()
-    assert logs.out == ""
-    for tool in PATIENT_TOOLS:
-        assert (f"Tool requested: {tool.name} ({patient_id})" in logs.err) == (tool.name in requested)
-        assert (f"Tool completed: {tool.name}" in logs.err) == (tool.name in requested)
+    completed = [record.event_fields["tool_name"] for record in caplog.records if record.message == "tool_completed"]
+    assert completed == requested
+    assert caplog.records[0].message == "investigation_started"
+    assert caplog.records[-1].message == "investigation_completed"
+    assert "Escherichia coli" not in caplog.text
+    assert "test-key-not-real" not in caplog.text
 
-    final_input = agent_model.await_args_list[-1].kwargs["input"]
+    final_input = agent_model.await_args_list[-1].args[1]
     outputs = [item for item in final_input if isinstance(item, dict) and item.get("type") == "function_call_output"]
     assert len(outputs) == len(requested)
     for output in outputs:
@@ -73,10 +79,25 @@ def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, 
     assert json.loads(outputs[0]["output"])["records"][0]["outcome"] == (
         "growth" if patient_id == "PATIENT_001" else "no_growth"
     )
+    assert len(sdk_traces.traces) == 1
+    responses = [span.span_data for span in sdk_traces.spans if span.span_data.type == "response"]
+    assert len(responses) == len(plan) + 1
+    assert ClinicalSummary.model_validate_json(responses[-1].response.output[0].content[0].text) == review
+    assert "new microbiology result" in str(responses[0].input)
+    assert sdk_traces.traces[0].tracing_api_key == "test-key-not-real"
+    assert "test-key-not-real" not in json.dumps(sdk_traces.traces[0].export())
+    functions = [span.span_data for span in sdk_traces.spans if span.span_data.type == "function"]
+    assert [span.name for span in functions] == requested
+    assert all(span.input == "{}" for span in functions)
+    assert json.loads(functions[0].output)["patient_id"] == patient_id
+    final_span = next(span for span in sdk_traces.spans if getattr(span.span_data, "name", None) == "validated_clinical_summary")
+    assert final_span.span_data.data["summary"] == review.model_dump(mode="json")
+    assert caplog.records[-1].event_fields["trace_id"] == sdk_traces.traces[0].trace_id
 
 
-def test_runner_has_one_agent_scoped_context_and_bounded_execution(agent_model, monkeypatch):
-    runner = AsyncMock(return_value=SimpleNamespace(final_output="Mock review"))
+def test_runner_has_one_agent_scoped_context_and_bounded_execution(agent_model, monkeypatch, make_clinical_summary):
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(make_clinical_summary("PATIENT_002", ["get_microbiology_results"]))]
+    runner = AsyncMock(wraps=Runner.run)
     monkeypatch.setattr(Runner, "run", runner)
 
     asyncio.run(investigate_patient("PATIENT_002"))
@@ -89,13 +110,15 @@ def test_runner_has_one_agent_scoped_context_and_bounded_execution(agent_model, 
     assert agent.mcp_servers == []
     assert [tool.name for tool in agent.tools] == [tool.name for tool in PATIENT_TOOLS]
     assert agent.model_settings.tool_choice == "auto"
-    assert agent.model_settings.store is False
+    assert agent.model_settings.store is True
+    assert agent.output_type is ClinicalSummary
     assert args.kwargs["context"].patient_id == "PATIENT_002"
-    assert args.kwargs["run_config"].tracing_disabled is True
+    assert args.kwargs["run_config"].tracing_disabled is False
+    assert args.kwargs["run_config"].trace_include_sensitive_data is True
     assert args.kwargs["max_turns"] == MAX_AGENT_TURNS
     assert "new microbiology result" in args.kwargs["input"]
     assert "cephalexin" not in args.kwargs["input"]
-    agent_model.assert_not_awaited()
+    assert agent_model.await_count == 2
 
 
 @pytest.mark.parametrize("patient_id, error", [
@@ -111,7 +134,7 @@ def test_patient_is_validated_before_model_invocation(agent_model, patient_id, e
 def test_missing_final_review_is_an_error(agent_model, monkeypatch, output):
     monkeypatch.setattr(Runner, "run", AsyncMock(return_value=SimpleNamespace(final_output=output)))
 
-    with pytest.raises(AgentDemoError, match="no final review"):
+    with pytest.raises(AgentDemoError, match="no valid clinical summary"):
         asyncio.run(investigate_patient("PATIENT_001"))
 
 
@@ -141,3 +164,38 @@ def test_service_failure_aborts_run_before_final_response(agent_model, monkeypat
         asyncio.run(investigate_patient("PATIENT_001"))
     assert isinstance(caught.value.__cause__, DataLoadError)
     assert agent_model.await_count == 1
+
+
+def test_sparse_patient_has_clean_empty_output(agent_model, make_clinical_summary):
+    expected = make_clinical_summary("PATIENT_005", ["get_microbiology_results"])
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(expected)]
+
+    summary = asyncio.run(investigate_patient("PATIENT_005"))
+
+    assert summary.organism is None
+    assert summary.specimen_type is None
+    assert summary.relevant_labs == []
+    assert summary.relevant_medications == []
+    assert summary.important_findings == []
+    assert summary.missing_information == ["No microbiology results recorded."]
+
+
+def test_sdk_rejects_malformed_structured_output(agent_model):
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response('{"patient_id": 5}')]
+
+    with pytest.raises(ModelBehaviorError):
+        asyncio.run(investigate_patient("PATIENT_001"))
+
+
+def test_unsupported_output_fails_without_completed_event(agent_model, make_clinical_summary, caplog):
+    caplog.set_level("INFO", logger="infectious_disease_assistant")
+    unsupported = make_clinical_summary("PATIENT_001", ["get_microbiology_results"])
+    unsupported.organism = "Fabricated organism"
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(unsupported)]
+
+    with pytest.raises(SummaryEvidenceError):
+        asyncio.run(investigate_patient("PATIENT_001"))
+    assert caplog.records[-1].message == "investigation_failed"
+    assert caplog.records[-1].event_fields["error_type"] == "SummaryEvidenceError"
+    assert "investigation_completed" not in caplog.text
+    assert "Fabricated organism" not in caplog.text
