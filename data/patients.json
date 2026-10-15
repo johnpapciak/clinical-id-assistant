@@ -1,0 +1,136 @@
+{
+  "reference_date": "2026-10-15",
+  "patients": [
+    {
+      "patient_id": "PATIENT_001",
+      "age": 67,
+      "medications": [
+        {"name": "cephalexin", "dose": "500 mg", "route": "oral", "frequency": "every 12 hours", "status": "active"},
+        {"name": "lisinopril", "dose": "10 mg", "route": "oral", "frequency": "daily", "status": "active"},
+        {"name": "nitrofurantoin", "dose": "100 mg", "route": "oral", "frequency": "every 12 hours", "status": "completed"}
+      ],
+      "allergies": [
+        {"substance": "trimethoprim-sulfamethoxazole", "reaction": "urticaria", "severity": "moderate"}
+      ],
+      "labs": [
+        {"name": "creatinine", "value": 1.8, "unit": "mg/dL", "collected_on": "2026-10-14", "flag": "high"},
+        {"name": "white blood cell count", "value": 12.4, "unit": "10^3/uL", "collected_on": "2026-10-14", "flag": "high"},
+        {"name": "creatinine", "value": 1.2, "unit": "mg/dL", "collected_on": "2026-06-08", "flag": "normal"}
+      ],
+      "microbiology_results": [
+        {
+          "result_id": "MICRO_001_RECENT", "specimen": "urine", "collected_on": "2026-10-13",
+          "outcome": "growth", "organism": "Escherichia coli", "quantity": ">100,000 CFU/mL",
+          "susceptibilities": [
+            {"antibiotic": "ampicillin", "interpretation": "resistant"},
+            {"antibiotic": "cefazolin", "interpretation": "susceptible"},
+            {"antibiotic": "nitrofurantoin", "interpretation": "susceptible"}
+          ]
+        },
+        {
+          "result_id": "MICRO_001_PRIOR", "specimen": "urine", "collected_on": "2026-06-08",
+          "outcome": "growth", "organism": "Escherichia coli", "quantity": ">100,000 CFU/mL",
+          "susceptibilities": [{"antibiotic": "nitrofurantoin", "interpretation": "susceptible"}]
+        }
+      ],
+      "previous_infections": [
+        {"diagnosis": "urinary tract infection", "organism": "Escherichia coli", "diagnosed_on": "2026-06-09", "site": "urinary tract", "treatment": "nitrofurantoin"}
+      ],
+      "diagnoses": [
+        {"name": "hypertension", "recorded_on": "2025-01-10", "status": "active"},
+        {"name": "urinary tract infection", "recorded_on": "2026-10-14", "status": "active"}
+      ],
+      "encounters": [
+        {"encounter_id": "ENCOUNTER_001", "occurred_on": "2026-10-14", "setting": "outpatient", "reason": "dysuria and urinary frequency"}
+      ]
+    },
+    {
+      "patient_id": "PATIENT_002",
+      "age": 34,
+      "medications": [],
+      "allergies": [],
+      "labs": [
+        {"name": "creatinine", "value": 0.8, "unit": "mg/dL", "collected_on": "2026-10-12", "flag": "normal"},
+        {"name": "white blood cell count", "value": 7.1, "unit": "10^3/uL", "collected_on": "2026-10-12", "flag": "normal"}
+      ],
+      "microbiology_results": [
+        {
+          "result_id": "MICRO_002_RECENT", "specimen": "urine", "collected_on": "2026-10-12",
+          "outcome": "growth", "organism": "Escherichia coli", "quantity": ">100,000 CFU/mL",
+          "susceptibilities": [{"antibiotic": "nitrofurantoin", "interpretation": "susceptible"}]
+        }
+      ],
+      "previous_infections": [],
+      "diagnoses": [],
+      "encounters": [
+        {"encounter_id": "ENCOUNTER_002", "occurred_on": "2026-10-12", "setting": "outpatient", "reason": "urinary symptoms; urine culture collected"}
+      ]
+    },
+    {
+      "patient_id": "PATIENT_003",
+      "age": 52,
+      "medications": [
+        {"name": "doxycycline", "dose": "100 mg", "route": "oral", "frequency": "every 12 hours", "status": "active"}
+      ],
+      "allergies": [
+        {"substance": "penicillin", "reaction": "anaphylaxis", "severity": "severe"}
+      ],
+      "labs": [
+        {"name": "creatinine", "value": 1.0, "unit": "mg/dL", "collected_on": "2026-10-11", "flag": "normal"},
+        {"name": "white blood cell count", "value": 11.2, "unit": "10^3/uL", "collected_on": "2026-10-11", "flag": "high"}
+      ],
+      "microbiology_results": [
+        {
+          "result_id": "MICRO_003_RECENT", "specimen": "wound", "collected_on": "2026-10-10",
+          "outcome": "growth", "organism": "Staphylococcus aureus",
+          "susceptibilities": [
+            {"antibiotic": "oxacillin", "interpretation": "resistant"},
+            {"antibiotic": "tetracycline", "interpretation": "susceptible"}
+          ]
+        }
+      ],
+      "previous_infections": [],
+      "diagnoses": [
+        {"name": "skin abscess", "recorded_on": "2026-10-11", "status": "active"}
+      ],
+      "encounters": [
+        {"encounter_id": "ENCOUNTER_003", "occurred_on": "2026-10-11", "setting": "emergency", "reason": "draining skin abscess"}
+      ]
+    },
+    {
+      "patient_id": "PATIENT_004",
+      "age": 76,
+      "medications": [
+        {"name": "amlodipine", "dose": "5 mg", "route": "oral", "frequency": "daily", "status": "active"},
+        {"name": "ceftriaxone", "dose": "1 g", "route": "intravenous", "frequency": "daily", "status": "stopped"}
+      ],
+      "allergies": [{"substance": "ciprofloxacin"}],
+      "labs": [
+        {"name": "creatinine", "value": 2.3, "unit": "mg/dL", "collected_on": "2026-10-14", "flag": "high"}
+      ],
+      "microbiology_results": [
+        {"result_id": "MICRO_004_RECENT", "specimen": "blood", "collected_on": "2026-10-09", "outcome": "no_growth"},
+        {
+          "result_id": "MICRO_004_PRIOR", "specimen": "urine", "collected_on": "2026-02-03",
+          "outcome": "growth", "organism": "Klebsiella pneumoniae", "quantity": ">100,000 CFU/mL",
+          "susceptibilities": [{"antibiotic": "ceftriaxone", "interpretation": "susceptible"}]
+        }
+      ],
+      "previous_infections": [
+        {"diagnosis": "urinary tract infection", "organism": "Klebsiella pneumoniae", "diagnosed_on": "2026-02-04", "site": "urinary tract"}
+      ],
+      "diagnoses": [
+        {"name": "chronic kidney disease", "recorded_on": "2025-03-12", "status": "active"}
+      ],
+      "encounters": [
+        {"encounter_id": "ENCOUNTER_004", "occurred_on": "2026-10-09", "setting": "inpatient", "reason": "fever evaluation"}
+      ]
+    },
+    {
+      "patient_id": "PATIENT_005",
+      "encounters": [
+        {"encounter_id": "ENCOUNTER_005", "occurred_on": "2026-10-15", "setting": "outpatient", "reason": "new patient visit; limited synthetic history"}
+      ]
+    }
+  ]
+}
