@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Python, evaluations, PostgreSQL, and Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPENAI_API_KEY: ""
+      OPENAI_MODEL: ""
+      OPENAI_AGENTS_DISABLE_TRACING: "1"
+      IDA_TEST_DATABASE_URL: postgresql://ida_ci:ci-synthetic-only@127.0.0.1:5432/ida_ci
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_DB: ida_ci
+          POSTGRES_USER: ida_ci
+          POSTGRES_PASSWORD: ci-synthetic-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ida_ci -d ida_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install -e '.[dev]'
+          python -m pip check
+      - name: Lint
+        run: python -m ruff check .
+      - name: Unit tests
+        run: python -m pytest -m "not integration and not live_api" --junitxml=test-results/unit.xml
+      - name: Deterministic evaluations
+        run: python -m infectious_disease_assistant.evals.run --mode scripted --output eval-results/ci.json
+      - name: PostgreSQL and pgvector integration tests
+        run: python -m pytest -m "integration and not live_api" tests/integration --junitxml=test-results/integration.xml
+      - name: Build Docker image
+        run: docker build --tag infectious-disease-assistant:ci .
+      - name: Save test and evaluation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-evaluation-reports
+          path: |
+            test-results/*.xml
+            eval-results/ci.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -138,6 +138,53 @@ python -m pytest
 
 On Windows, activate with `.venv\Scripts\activate`.
 
+## Continuous integration
+
+[GitHub Actions CI](https://github.com/johnpapciak/clinical-id-assistant/actions/workflows/ci.yml)
+runs on pull requests and pushes to `main`, using Python 3.12 to match the
+container runtime. It installs the hash-locked runtime dependencies plus development
+tools, checks dependency consistency, runs Ruff, unit tests, the scripted
+evaluation suite, PostgreSQL/pgvector integration tests, and a Docker image build.
+Ruff checks syntax and selected correctness errors; a repository-wide formatting
+change is not required. The workflow does not publish images or deploy anything.
+
+The database is a disposable service container. Its password is a CI-only fixture,
+not a production credential. Integration tests create and remove isolated schemas;
+the runner removes the service after the job. No OpenAI secrets are configured:
+model calls, embeddings, and FHIR HTTP are mocked where needed. Scripted evaluations
+make no paid API calls and do not measure live model quality.
+
+With the virtual environment active, run the same checks locally:
+
+```sh
+python -m pip install --require-hashes -r requirements.lock
+python -m pip install -e '.[dev]'
+python -m pip check
+python -m ruff check .
+python -m pytest -m "not integration and not live_api" --junitxml=test-results/unit.xml
+python -m infectious_disease_assistant.evals.run --mode scripted --output eval-results/ci.json
+```
+
+For the database checks, start a disposable PostgreSQL/pgvector database, set
+`IDA_TEST_DATABASE_URL` to its connection URL, then run:
+
+```sh
+python -m pytest -m "integration and not live_api" tests/integration --junitxml=test-results/integration.xml
+docker build --tag infectious-disease-assistant:ci .
+```
+
+There are currently no live OpenAI tests. Any future test requiring a live provider
+must use `@pytest.mark.live_api`; pytest excludes that marker by default, and both
+CI test commands explicitly exclude it. To opt into live testing locally, select
+`-m live_api` and supply credentials separately. Unknown markers
+are errors, which helps catch misspellings of the exclusion marker.
+
+Inspect the PR's **Checks** tab or the repository's **Actions → CI** run for
+status and logs. Each run uploads `test-and-evaluation-reports` containing pytest
+JUnit XML and the evaluation JSON when available, including reports from failed
+runs. Reports expire after 14 days. Repository owners can make the job a required
+status check in branch protection or a ruleset after its first run.
+
 ## Configuration
 
 `Settings` in `infectious_disease_assistant.config` reads `IDA_` environment
@@ -430,7 +477,7 @@ create `ida_guidelines_test` in the local container:
 docker compose exec guidelines-db createdb -U ida_demo ida_guidelines_test
 # Set IDA_TEST_DATABASE_URL in your shell to the same connection URL,
 # with database name ida_guidelines_test, then run:
-python -m pytest -m integration tests/integration -q
+python -m pytest -m "integration and not live_api" tests/integration -q
 ```
 
 Integration tests use temporary schemas and remove only their own schemas. The
@@ -622,7 +669,7 @@ PostgreSQL. For real transactions and concurrent approval checks, export the
 separate disposable `IDA_TEST_DATABASE_URL` described above and run:
 
 ```sh
-python -m pytest -m integration tests/integration -q
+python -m pytest -m "integration and not live_api" tests/integration -q
 ```
 
 ## Development patient authorization
