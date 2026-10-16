@@ -2,7 +2,9 @@ import argparse
 import sys
 
 from pydantic import ValidationError
+from pydantic_settings import SettingsError
 
+from infectious_disease_assistant.authorization import PatientAccessDeniedError
 from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.services.patients import (
     InvalidPatientIdError,
@@ -18,7 +20,10 @@ def main() -> int:
     try:
         patient_id = args.patient_id if args.patient_id is not None else input("Patient ID: ")
         summary = get_patient_summary(patient_id)
-    except (InvalidPatientIdError, PatientNotFoundError, FhirError, ValidationError) as error:
+    except (ValidationError, SettingsError):
+        print("Error: check configuration (log_level, patient assignments, and FHIR settings).", file=sys.stderr)
+        return 1
+    except (InvalidPatientIdError, PatientNotFoundError, PatientAccessDeniedError, FhirError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
     except EOFError:

@@ -58,6 +58,7 @@ def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, 
     caplog.set_level("INFO", logger="infectious_disease_assistant")
     requested = [name for names in plan for name in names]
     expected = make_clinical_summary(patient_id, requested)
+    caplog.clear()
     agent_model.side_effect = [
         *(tool_response(names, turn) for turn, names in enumerate(plan)),
         final_response(expected),

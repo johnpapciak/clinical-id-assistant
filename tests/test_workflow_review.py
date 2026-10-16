@@ -18,7 +18,9 @@ def client(workflow_store, monkeypatch, make_clinical_summary, sdk_traces):
     summary.proposed_action = SAFE_FOLLOWUP.model_copy(deep=True)
     monkeypatch.setattr(investigations, "investigate_patient", AsyncMock(return_value=summary))
     app = create_app(store=workflow_store)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(reviewer_id="REVIEWER_002")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        reviewer_id="REVIEWER_002", assigned_patient_ids={"PATIENT_001"},
+    )
     with TestClient(app) as client:
         yield client
 

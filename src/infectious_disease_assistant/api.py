@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from infectious_disease_assistant.config import Settings
+from infectious_disease_assistant.authorization import PatientAccessDeniedError, authorization_scope
 from infectious_disease_assistant.current_user import get_current_user
 from infectious_disease_assistant.models.workflow import ApproveRequest, CurrentUser, RejectRequest
 from infectious_disease_assistant.workflow.database import WorkflowStore
@@ -37,8 +38,13 @@ def get_investigation_service(request: Request) -> InvestigationService:
     return request.app.state.investigations
 
 
+async def patient_access_scope(user: Annotated[CurrentUser, Depends(get_current_user)]):
+    with authorization_scope(user):
+        yield
+
+
 InvestigationDependency = Annotated[InvestigationService, Depends(get_investigation_service)]
-investigations = APIRouter(prefix="/investigations", tags=["investigations"])
+investigations = APIRouter(prefix="/investigations", tags=["investigations"], dependencies=[Depends(patient_access_scope)])
 
 
 @investigations.post("", response_model=InvestigationResponse, status_code=status.HTTP_201_CREATED)
@@ -77,7 +83,10 @@ async def get_investigation(investigation_id: UUID, service: InvestigationDepend
 
 
 async def handle_investigation_error(request: Request, error: Exception) -> JSONResponse:
-    if isinstance(error, ReviewConflictError):
+    if isinstance(error, PatientAccessDeniedError):
+        payload = ErrorResponse(code="patient_access_denied", message="Access to this synthetic patient is denied.")
+        code = status.HTTP_403_FORBIDDEN
+    elif isinstance(error, ReviewConflictError):
         payload = ErrorResponse(code="review_conflict", message="The investigation cannot accept this review decision.")
         code = status.HTTP_409_CONFLICT
     elif isinstance(error, PatientNotFoundError):
@@ -122,10 +131,11 @@ def create_app(store: WorkflowStore | None = None) -> FastAPI:
     app.add_exception_handler(ReviewConflictError, handle_investigation_error)
     app.add_exception_handler(InvestigationError, handle_investigation_error)
     app.add_exception_handler(PatientNotFoundError, handle_investigation_error)
+    app.add_exception_handler(PatientAccessDeniedError, handle_investigation_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(Exception, handle_unexpected_error)
     app.include_router(investigations, responses={
-        code: {"model": ErrorResponse} for code in (404, 409, 422, 500, 502, 503)
+        code: {"model": ErrorResponse} for code in (403, 404, 409, 422, 500, 502, 503)
     })
 
     @app.get("/health", response_model=HealthResponse)

@@ -5,6 +5,9 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from infectious_disease_assistant.models.patient import PatientId
+from infectious_disease_assistant.models.workflow import ReviewerId
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -12,11 +15,17 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     data_dir: Path = Path("data")
     current_user_id: Annotated[str, StringConstraints(pattern=r"^REVIEWER_[0-9]{3}$")] = "REVIEWER_001"
+    patient_assignments: dict[ReviewerId, frozenset[PatientId]] = Field(
+        default_factory=lambda: {"REVIEWER_001": frozenset({"PATIENT_001"})},
+    )
+    trace_include_payloads: bool = False
+    store_model_responses: bool = False
     fhir_base_url: str = "http://127.0.0.1:8765/fhir"
 
     @field_validator("fhir_base_url")

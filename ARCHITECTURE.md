@@ -35,6 +35,7 @@ approve a proposed action before a simulated downstream action can occur.
 - `services/investigations.py`: event validation, coordinator orchestration, and persistent review workflow.
 - `api.py`: thin FastAPI investigation/review routes, HTTP errors, and lifespan.
 - `current_user.py`: explicit local demo identity dependency; replace with authentication later.
+- `authorization.py`: immutable principal scope, patient assignments, service checks, and access audit events.
 - `models/workflow.py`: typed actions, reviewer decisions, run records, and tool events.
 - `workflow/database.py` and `workflow/sql/`: durable PostgreSQL state, versioned migrations, and review transactions.
 - `workflow/audit.py`: high-level per-run audit collection; SDK tracing remains unchanged.
@@ -111,9 +112,10 @@ record mutation, or downstream action capability is exposed to the model.
 The agent demo makes model calls; guideline ingestion and search also make
 OpenAI embedding calls. FHIR retrieval remains deterministic and independent. The agent demo uses a
 standard SDK trace with native model and function spans, plus a supported SDK custom span containing the
-validated application output; model spans contain the constrained draft.
-Detailed trace payloads and response storage are enabled for
-synthetic development data. The CLI flushes the SDK's default exporter; there is
+validated application output when detailed payloads are enabled. Default spans
+exclude model/tool/final-summary payloads; provider response storage defaults to
+false. Both require explicit configuration to enable for synthetic development
+data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
 payloads. PostgreSQL persists guideline vectors and the application workflow audit.
 Only selected summary facts are retained, not complete FHIR resources. Human
@@ -264,6 +266,29 @@ restart/request persistence, actual SDK run audits with a mocked model,
 approval/rejection/modification, concurrent decision races, duplicate suppression,
 pre-approval action denial, database constraints, and rollback.
 
+## Development security boundary
+
+The environment-selected reviewer is resolved to an immutable principal with an
+explicit set of assigned synthetic patient tokens. An unlisted reviewer has no
+access. FastAPI establishes a request-local authorization scope; context variables
+propagate through asynchronous SDK tasks and worker threads. The deterministic
+patient service checks assignments before constructing a FHIR client. Each tool
+also checks its captured principal and rejects model-supplied patient/user arguments.
+No agent framework dependency is introduced into authorization or patient services.
+
+Investigation creation checks assignments before preflight retrieval. History and
+review read only the patient token first, authorize it, then load the summary or
+record a decision. Pending queries filter patient assignments in parameterized SQL
+before limits. Application events record access grants/denials and workflow events
+without raw clinical payloads. Detailed SDK trace payloads and provider response
+storage are separate opt-in settings, included in the configuration fingerprint.
+
+This illustrates authorization, not real authentication. The local fixture HTTP
+server and internal database adapters remain trusted components without per-user
+identity enforcement. Direct access to those components or Python configuration
+is outside the application boundary. See `SECURITY.md` for limitations and work
+required for a regulated deployment. No HIPAA certification or compliance is claimed.
+
 ## Safety evaluation boundary
 
 The dataset contains 15 clinical scenarios across the five synthetic patients and
@@ -274,9 +299,10 @@ recorded allergies/prescriptions, elevated or normal creatinine, missing data,
 and required/optional/forbidden guideline retrieval.
 
 `evals/run.py` supports two modes. Scripted mode uses a supported SDK `Model`
-implementation, fixture-backed `httpx.MockTransport`, and frozen guideline matches;
+implementation, fixture-backed `httpx.MockTransport`, a fixture-only principal,
+and frozen guideline matches;
 the actual tools/services/SDK output parser and safety gate execute. Live mode
-uses the configured model and existing local FHIR/PostgreSQL services. Both modes
+uses the configured identity/assignments, model, and local FHIR/PostgreSQL services. Both modes
 inject the five attack candidates directly into the final safety validator;
 these are deterministic boundary tests, not model-judged red teaming.
 

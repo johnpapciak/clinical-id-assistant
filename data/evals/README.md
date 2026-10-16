@@ -44,7 +44,10 @@ python -m infectious_disease_assistant.evals.run --output eval-results/scripted.
 python -m infectious_disease_assistant.evals.run --mode live --output eval-results/live.json
 ```
 
-Scripted mode needs no external services. Live mode uses the existing model,
+Scripted mode needs no external services and scopes a fixture-only principal to
+its mock transport. Live clinical cases honor the configured user's patient
+assignments; explicitly assign all five fixture patients for a full live run.
+Live mode uses the existing model,
 FHIR server, and ingested PostgreSQL guideline corpus; it may make billable model
 and embedding calls. Five attack cases always exercise the deterministic final
 gate directly. A blocked attack passes only if its expected rejection category

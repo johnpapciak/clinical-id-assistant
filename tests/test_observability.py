@@ -66,7 +66,8 @@ def test_unknown_or_invalid_patient_logs_failure_without_api_or_trace(agent_mode
         asyncio.run(investigate_patient(patient_id, trace_id=TRACE_ID))
 
     events = [record.message for record in caplog.records]
-    assert events == ["investigation_started", "investigation_failed"]
+    assert events == (["investigation_started", "patient_access_granted", "investigation_failed"]
+                      if logged_id else ["investigation_started", "investigation_failed"])
     assert caplog.records[-1].event_fields["patient_id"] == logged_id
     assert caplog.records[-1].event_fields["error_type"] == error.__name__
     assert caplog.records[-1].event_fields["trace_id"] == TRACE_ID
