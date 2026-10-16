@@ -1,19 +1,98 @@
+x-python: &python
+  image: infectious-disease-assistant:local
+  build:
+    context: .
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-database: &database
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
 services:
   guidelines-db:
     image: pgvector/pgvector:0.8.7-pg17
     environment:
+      <<: *database
       POSTGRES_DB: ida_guidelines
       POSTGRES_USER: ida_demo
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${IDA_POSTGRES_PORT:-5433}:5432"
     volumes:
       - guidelines-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ida_demo -d ida_guidelines"]
       interval: 2s
       timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  synthetic-fhir:
+    <<: *python
+    command: [fhir]
+    environment:
+      IDA_DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:${IDA_FHIR_PORT:-8765}:8765"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8765/fhir/metadata', timeout=3, trust_env=False).raise_for_status()"]
+      interval: 5s
+      timeout: 4s
       retries: 15
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    <<: *python
+    command: [migrate]
+    environment:
+      <<: *database
+    depends_on:
+      guidelines-db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *python
+    command: [api]
+    environment:
+      <<: *database
+      IDA_DATA_DIR: /app/data
+      IDA_FHIR_ALLOW_COMPOSE_HOST: "true"
+      IDA_FHIR_BASE_URL: http://synthetic-fhir:8765/fhir
+      IDA_LOG_LEVEL: ${IDA_LOG_LEVEL:-INFO}
+      IDA_CURRENT_USER_ID: ${IDA_CURRENT_USER_ID:-REVIEWER_001}
+      IDA_PATIENT_ASSIGNMENTS:
+      IDA_TRACE_INCLUDE_PAYLOADS: ${IDA_TRACE_INCLUDE_PAYLOADS:-false}
+      IDA_STORE_MODEL_RESPONSES: ${IDA_STORE_MODEL_RESPONSES:-false}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      IDA_EMBEDDING_DIMENSIONS: ${IDA_EMBEDDING_DIMENSIONS:-1536}
+      IDA_CHUNK_WORDS: ${IDA_CHUNK_WORDS:-120}
+      IDA_CHUNK_OVERLAP: ${IDA_CHUNK_OVERLAP:-20}
+      IDA_STARTUP_ATTEMPTS: ${IDA_STARTUP_ATTEMPTS:-20}
+      IDA_STARTUP_DELAY_SECONDS: ${IDA_STARTUP_DELAY_SECONDS:-1}
+    ports:
+      - "127.0.0.1:${IDA_API_PORT:-8000}:8000"
+    depends_on:
+      guidelines-db:
+        condition: service_healthy
+      synthetic-fhir:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8000/health', timeout=3, trust_env=False).raise_for_status()"]
+      interval: 5s
+      timeout: 4s
+      retries: 15
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
 
 volumes:
   guidelines-postgres:

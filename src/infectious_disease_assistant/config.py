@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,20 +26,38 @@ class Settings(BaseSettings):
     )
     trace_include_payloads: bool = False
     store_model_responses: bool = False
+    fhir_allow_compose_host: bool = False
     fhir_base_url: str = "http://127.0.0.1:8765/fhir"
 
     @field_validator("fhir_base_url")
     @classmethod
-    def validate_local_fhir_url(cls, value: str) -> str:
+    def validate_local_fhir_url(cls, value: str, info: ValidationInfo) -> str:
         parsed = urlsplit(value)
         parsed.port
+        allowed = parsed.hostname in {"localhost", "127.0.0.1", "::1"} or (
+            info.data.get("fhir_allow_compose_host") and parsed.hostname == "synthetic-fhir" and parsed.port == 8765
+        )
         if (
-            parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+            parsed.scheme != "http" or not allowed
             or parsed.username is not None or parsed.password is not None
             or parsed.query or parsed.fragment or parsed.path.rstrip("/") != "/fhir"
         ):
             raise ValueError("FHIR must use a local synthetic HTTP endpoint")
         return value
+
+
+class ContainerDatabaseSettings(Settings):
+    database_host: Literal["guidelines-db"] = "guidelines-db"
+    postgres_password: SecretStr = Field(validation_alias="POSTGRES_PASSWORD", min_length=1)
+
+    def connection_url(self) -> str:
+        password = quote(self.postgres_password.get_secret_value(), safe="")
+        return f"postgresql://ida_demo:{password}@{self.database_host}:5432/ida_guidelines"
+
+
+class StartupSettings(Settings):
+    startup_attempts: int = Field(default=20, ge=1, le=60)
+    startup_delay_seconds: float = Field(default=1.0, ge=0, le=5, allow_inf_nan=False)
 
 
 class AgentSettings(Settings):

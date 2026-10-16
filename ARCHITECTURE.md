@@ -30,6 +30,7 @@ approve a proposed action before a simulated downstream action can occur.
 ## Current boundaries
 
 - `config.py`: environment-based Pydantic settings.
+- `local_runtime.py`: container database URL construction, bounded dependency retries, migrations, and process startup.
 - `models/patient.py`: typed clinical domain objects and patient context/summaries.
 - `models/investigation.py`: framework-independent investigation requests/responses and API error schemas.
 - `services/investigations.py`: event validation, coordinator orchestration, and persistent review workflow.
@@ -61,6 +62,7 @@ approve a proposed action before a simulated downstream action can occur.
 - `rag/service.py`: ingestion and retrieval orchestration, independent of the agent SDK.
 - `tools/guideline_tools.py`: optional read-only RAG tool with cumulative evidence records.
 - `compose.yaml`: loopback-only PostgreSQL with pgvector and a persistent volume.
+- `Dockerfile` and `.dockerignore`: non-root runtime image, hash-locked dependencies, and allowlisted build context.
 - `data/guidelines/`: CC0 project-authored synthetic review checklists and provenance manifest.
 - `data/fhir/bundle.json`: canonical synthetic R4 resources for five patients.
 - `evals/`: typed evaluation cases/reports, deterministic scoring, SDK replay, and live runner.
@@ -288,6 +290,29 @@ server and internal database adapters remain trusted components without per-user
 identity enforcement. Direct access to those components or Python configuration
 is outside the application boundary. See `SECURITY.md` for limitations and work
 required for a regulated deployment. No HIPAA certification or compliance is claimed.
+
+## Local container deployment
+
+Compose runs `api`, `synthetic-fhir`, `guidelines-db`, and a one-shot `migrate`
+service from the same checkout. Python services share one installed runtime image;
+the FHIR service receives no database password or OpenAI key. The committed
+synthetic Bundle and guideline sources are bundled read-only. PostgreSQL state
+survives container recreation in the existing named volume.
+
+Database health gates migration startup. Both checksummed migration sets run
+before API startup; FHIR and database health plus successful migration completion
+gate the API. Python startup adds bounded retries and validates synthetic FHIR
+metadata, pgvector, and tables. The existing `/health` remains liveness; the
+`local_runtime check` command tests dependency readiness. Embedding ingestion is
+explicit, so starting Compose never silently incurs embedding/model API usage.
+
+The entrypoint constructs a safely encoded internal database URL from runtime
+credentials. A host `DATABASE_URL` is not injected into Compose. Compose DNS names
+are fixed; the FHIR client permits its exact service host only with an explicit
+environment opt-in. The standalone FHIR command still binds loopback by default;
+Compose binds within its container and publishes only to host loopback.
+The image has no source bind mounts or development test dependencies. Ordinary
+Python commands and offline tests remain usable without Docker.
 
 ## Safety evaluation boundary
 

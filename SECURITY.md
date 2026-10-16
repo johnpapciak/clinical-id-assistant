@@ -20,6 +20,8 @@ automatically make an application HIPAA compliant.
 - Tools expose bounded operations, with no arbitrary SQL, FHIR URL, or write
   tool. SQL uses parameters. The FHIR adapter accepts only local synthetic
   endpoints, supported resource types, and local references, and rejects redirects.
+  Compose explicitly permits only its `synthetic-fhir:8765` host in addition to
+  loopback; this does not permit arbitrary private or external endpoints.
   Domain outputs use synthetic business tokens rather than FHIR transport IDs.
 - Application logs contain event metadata, not clinical records, tool payloads,
   exception messages, reviewer notes, or credentials. JSON formatting drops
@@ -50,6 +52,12 @@ is outside this demo's authorization boundary. Do not expose local services
 publicly. Audit logs are not tamper-proof. Saved evaluation reports and opted-in
 traces can contain synthetic clinical data. Scripted evaluation uses a fixture-only
 principal inside mock transport; live clinical evaluation uses configured assignments.
+
+Compose publishes services only on host loopback. Python containers run as a
+non-root user with read-only filesystems and dropped capabilities. Build context
+allowlisting excludes local secrets, and runtime credentials are supplied through
+environment variables. Local Docker administrators can inspect container
+environment/volumes; these controls do not replace a production secret manager.
 
 ## Work required for regulated deployment
 
