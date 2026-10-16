@@ -1,3 +1,4 @@
+import asyncio
 import re
 import hashlib
 import json
@@ -130,7 +131,7 @@ async def investigate_patient(
     started = perf_counter()
     log_event("investigation_started", patient_id=safe_id, trace_id=investigation_trace_id)
     try:
-        patient = get_patient_context(patient_id)
+        patient = await asyncio.to_thread(get_patient_context, patient_id)
         context = PatientContext(patient.patient_id, patient.reference_date)
         settings = (
             AgentSettings(_env_file=None, OPENAI_MODEL="scripted-replay", OPENAI_API_KEY="unused-replay-key")

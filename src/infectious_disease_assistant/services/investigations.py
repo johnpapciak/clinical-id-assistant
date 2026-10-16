@@ -15,11 +15,11 @@ from infectious_disease_assistant.agent import AgentDemoError, investigate_patie
 from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
 from infectious_disease_assistant.models.investigation import InvestigationRequest, InvestigationResponse
-from infectious_disease_assistant.observability import LOGGER
+from infectious_disease_assistant.event_logging import LOGGER
 from infectious_disease_assistant.rag.errors import RagError
 from infectious_disease_assistant.services import patients
 from infectious_disease_assistant.services.summary_validation import SummaryEvidenceError
-from infectious_disease_assistant.models.workflow import AgentRunRecord, ApproveRequest, CurrentUser, RejectRequest
+from infectious_disease_assistant.models.workflow import AgentRunRecord, ApproveRequest, CurrentUser, FollowupAction, RejectRequest
 from infectious_disease_assistant.workflow.audit import RunAudit, utc_now
 from infectious_disease_assistant.workflow.database import WorkflowStore
 from infectious_disease_assistant.workflow.errors import WorkflowDatabaseError, WorkflowNotFoundError
@@ -128,11 +128,14 @@ class InvestigationService:
     def reject(self, investigation_id: UUID, user: CurrentUser, request: RejectRequest) -> InvestigationResponse:
         return self._review(investigation_id, user, reject=True, note=request.note)
 
-    def _review(self, investigation_id: UUID, user: CurrentUser, **options) -> InvestigationResponse:
+    def _review(
+        self, investigation_id: UUID, user: CurrentUser, *, reject: bool = False,
+        note: str | None = None, modified_action: FollowupAction | None = None,
+    ) -> InvestigationResponse:
         try:
             with authorization_scope(user):
                 authorize_patient(self.store.patient_id_for(investigation_id), operation="investigation_review")
-                result = self.store.review(investigation_id, user, **options)
+                result = self.store.review(investigation_id, user, reject=reject, note=note, modified_action=modified_action)
                 security_event("review_decision_recorded", user=user, patient_id=result.patient_id,
                                operation=result.approval.decision)
                 return result

@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import hashlib
-import json
 import sys
 from pathlib import Path
 from time import perf_counter

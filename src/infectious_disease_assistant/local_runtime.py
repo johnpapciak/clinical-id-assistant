@@ -9,7 +9,7 @@ from pydantic_settings import SettingsError
 from infectious_disease_assistant.config import ContainerDatabaseSettings, RagSettings, StartupSettings
 from infectious_disease_assistant.fhir.client import FhirClient
 from infectious_disease_assistant.fhir.errors import FhirError
-from infectious_disease_assistant.observability import LOGGER, configure_logging
+from infectious_disease_assistant.event_logging import LOGGER, configure_logging
 from infectious_disease_assistant.rag.database import GuidelineStore
 from infectious_disease_assistant.rag.errors import RagError
 from infectious_disease_assistant.workflow.database import WorkflowStore

@@ -1,7 +1,6 @@
-# Planned architecture
+# Version 1 architecture
 
-All patient and lab data must be synthetic. The following flow is a long-term
-design. The current implementation covers typed synthetic data, deterministic
+All patient and lab data must be synthetic. The version 1 implementation covers typed synthetic data, deterministic
 Python retrieval through a local synthetic FHIR API, and a single coordinator
 agent invoked from a CLI or FastAPI application service, plus optional
 PostgreSQL/pgvector guideline retrieval and persistent human review before any
@@ -23,14 +22,15 @@ flowchart TD
 ```
 
 The Python application owns workflow rules and typed inputs and outputs.
-The coordinator will request capabilities through explicitly allowed tools.
-FHIR and retrieval adapters will provide synthetic context. A structured summary
-will separate findings, supporting evidence, and proposed actions. A human must
+The coordinator requests capabilities through explicitly allowed tools.
+FHIR and retrieval adapters provide synthetic context. A structured summary
+separates findings, supporting evidence, and proposed actions. A human must
 approve a proposed action before a simulated downstream action can occur.
 
 ## Current boundaries
 
 - `config.py`: environment-based Pydantic settings.
+- `database.py`: shared checksummed migration runner; guideline and workflow ledgers remain separate.
 - `local_runtime.py`: container database URL construction, bounded dependency retries, migrations, and process startup.
 - `models/patient.py`: typed clinical domain objects and patient context/summaries.
 - `models/investigation.py`: framework-independent investigation requests/responses and API error schemas.
@@ -56,7 +56,8 @@ approve a proposed action before a simulated downstream action can occur.
 - `tools/patient_tools.py`: five SDK function tools scoped to the selected patient.
 - `agent.py`: one coordinator, safety instructions, model configuration, and SDK invocation.
 - `agent_demo.py`: agent CLI with JSON output and SDK trace flushing.
-- `observability.py`: high-level JSON event logging and SDK run hooks.
+- `event_logging.py`: SDK-independent JSON event logging and payload allowlist.
+- `observability.py`: SDK run hooks, tracing helpers, and evaluation observations.
 - `rag/models.py`: typed documents, chunks, search matches, and source citations.
 - `rag/documents.py`: local Markdown extraction, whitespace cleanup, and section-aware word chunks.
 - `rag/embeddings.py`: configurable OpenAI embeddings and vector validation; no agent dependency.
@@ -69,7 +70,21 @@ approve a proposed action before a simulated downstream action can occur.
 - `data/fhir/bundle.json`: canonical synthetic R4 resources for five patients.
 - `evals/`: typed evaluation cases/reports, deterministic scoring, SDK replay, and live runner.
 - `data/evals/`: 20 authored synthetic expectations and separate frozen replay responses.
-- `tests/`: deterministic tests plus mocked agent, tool, configuration, and CLI tests.
+- `tests/`: deterministic unit/UI tests plus opt-in PostgreSQL and full-stack HTTP integration tests.
+
+Version 1 keeps concrete stores rather than adding repository interfaces. Both
+stores call the same migration loop with distinct advisory locks and ledgers,
+preserving migration checksums, transactions, and domain-specific errors.
+Patient services, safety checks, logging, and storage import no agent SDK; an
+import-boundary regression test checks that separation. The investigation service
+is the application orchestrator and translates coordinator failures into safe
+application errors. FastAPI continues to handle HTTP validation and translation.
+
+Patient preflight and tool retrieval use worker threads so synchronous FHIR HTTP
+does not block the coordinator event loop. Context variables preserve the captured
+reviewer in workers. Patient evidence-source ordering follows request order;
+parallel completion order is not part of the tool contract. Tests check requested
+tools and their results without imposing completion order within a parallel turn.
 
 The server loads and validates a fixture Bundle at startup. Agent tools never
 open files. `FhirClient` provides a concrete read/search interface over HTTP,

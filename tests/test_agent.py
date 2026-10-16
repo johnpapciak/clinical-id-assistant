@@ -70,7 +70,7 @@ def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, 
     assert review.disclaimer == CLINICAL_DISCLAIMER
     assert agent_model.await_count == len(plan) + 1
     completed = [record.event_fields["tool_name"] for record in caplog.records if record.message == "tool_completed"]
-    assert completed == requested
+    assert sorted(completed) == sorted(requested)
     assert caplog.records[0].message == "investigation_started"
     assert caplog.records[-1].message == "investigation_completed"
     assert "Escherichia coli" not in caplog.text
@@ -95,7 +95,7 @@ def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, 
     assert sdk_traces.traces[0].tracing_api_key == "test-key-not-real"
     assert "test-key-not-real" not in json.dumps(sdk_traces.traces[0].export())
     functions = [span.span_data for span in sdk_traces.spans if span.span_data.type == "function"]
-    assert [span.name for span in functions] == requested
+    assert sorted(span.name for span in functions) == sorted(requested)
     assert all(span.input == "{}" for span in functions)
     assert json.loads(functions[0].output)["patient_id"] == patient_id
     final_span = next(span for span in sdk_traces.spans if getattr(span.span_data, "name", None) == "validated_clinical_summary")

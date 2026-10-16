@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -31,43 +32,45 @@ def _serialize(context: PatientContext, tool_name: ToolName, records: Sequence[B
     })
 
 
-def _retrieve(context: ToolContext[PatientContext], tool_name: ToolName) -> str:
+async def _retrieve(context: ToolContext[PatientContext], tool_name: ToolName) -> str:
     if json.loads(context.tool_arguments) != {}:
         raise ModelBehaviorError("Patient tools accept no model-supplied arguments")
     patient = context.context
     with authorization_scope(patient.user):
         authorize_patient(patient.patient_id, operation=tool_name)
-        return _serialize(patient, tool_name, getattr(patients, tool_name)(patient.patient_id))
+        patient.tool_results.setdefault(tool_name, [])
+        records = await asyncio.to_thread(getattr(patients, tool_name), patient.patient_id)
+        return _serialize(patient, tool_name, records)
 
 
 @function_tool(failure_error_function=None)
 async def get_medications(context: ToolContext[PatientContext]) -> str:
     """Read active prescriptions recorded for the selected synthetic patient."""
-    return _retrieve(context, "get_medications")
+    return await _retrieve(context, "get_medications")
 
 
 @function_tool(failure_error_function=None)
 async def get_allergies(context: ToolContext[PatientContext]) -> str:
     """Read recorded medication allergies; empty means no entries recorded."""
-    return _retrieve(context, "get_allergies")
+    return await _retrieve(context, "get_allergies")
 
 
 @function_tool(failure_error_function=None)
 async def get_recent_labs(context: ToolContext[PatientContext]) -> str:
     """Read labs from the inclusive 30-day lookback ending at the dataset reference date."""
-    return _retrieve(context, "get_recent_labs")
+    return await _retrieve(context, "get_recent_labs")
 
 
 @function_tool(failure_error_function=None)
 async def get_microbiology_results(context: ToolContext[PatientContext]) -> str:
     """Read recent and historical cultures, newest first, through the reference date."""
-    return _retrieve(context, "get_microbiology_results")
+    return await _retrieve(context, "get_microbiology_results")
 
 
 @function_tool(failure_error_function=None)
 async def get_previous_infections(context: ToolContext[PatientContext]) -> str:
     """Read explicit infection history before the reference date; cultures alone are not infections."""
-    return _retrieve(context, "get_previous_infections")
+    return await _retrieve(context, "get_previous_infections")
 
 
 PATIENT_TOOLS = [
