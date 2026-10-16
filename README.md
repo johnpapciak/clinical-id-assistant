@@ -298,6 +298,84 @@ test-only vectors and make no embedding/model API calls; they verify PostgreSQL
 and pgvector behavior independently of embedding quality. `.env` alone does not
 opt tests in: export `IDA_TEST_DATABASE_URL` explicitly.
 
+## FastAPI application boundary
+
+Install the updated dependencies with `python -m pip install -e '.[dev]'`.
+Keep the synthetic FHIR service running in a separate terminal and set
+`OPENAI_MODEL` and `OPENAI_API_KEY` in your ignored `.env`. Initialize and ingest
+the guideline database as described above if the agent requests RAG. Start the
+API from the repository root with the virtual environment active:
+
+```sh
+python -m uvicorn infectious_disease_assistant.api:app --host 127.0.0.1 --port 8000
+```
+
+The API has no authentication in this milestone and binds to loopback with this
+command. Open `http://127.0.0.1:8000/docs` for generated request/response schemas.
+`GET /health` is a liveness check; it does not call FHIR, the database, or OpenAI
+and does not establish that investigation dependencies are ready.
+
+```sh
+curl http://127.0.0.1:8000/health
+curl -i -X POST http://127.0.0.1:8000/investigations \
+  -H 'Content-Type: application/json' \
+  -d '{"patient_id":"PATIENT_001","microbiology_result_id":"MICRO_001_RECENT"}'
+```
+
+Use the existing synthetic business result ID, not the FHIR resource ID.
+`MICRO_001_RECENT` belongs to `PATIENT_001`; `RESULT_001` illustrates the accepted
+synthetic identifier format but is not present in the fixtures. Requests accept
+only `patient_id` and `microbiology_result_id`, with extra fields rejected.
+Patient IDs follow `PATIENT_` plus three digits; result IDs follow `MICRO_` plus
+three digits and an uppercase alphanumeric suffix, or `RESULT_` plus three digits.
+No clinical text, model settings, credentials, or arbitrary instructions are
+accepted in the HTTP request.
+
+POST validates the patient and result against FHIR before invoking the coordinator.
+It waits for completion and returns **201 Created**, a `Location` header, and an
+`InvestigationResponse` containing a UUID `investigation_id`, patient/result IDs,
+`status: "completed"`, UTC `created_at`, and the existing structured `summary`.
+A named historical result is investigated exactly; Python rejects a summary that
+silently substitutes the newest result. The CLI keeps its existing newest-result
+behavior, and the coordinator remains callable without importing FastAPI.
+
+Copy the returned UUID to fetch the completed investigation without running the
+agent again:
+
+```sh
+curl "http://127.0.0.1:8000/investigations/<investigation_id>"
+```
+
+Completed records are held in memory, limited to the latest 100 completions per
+application instance. Restarting/reloading the process clears them; eviction also
+makes GET return 404. Use a single worker for this demo. No persistent investigation
+tables, task queue, polling states, or duplicate-request suppression are added.
+Repeated POSTs create independent investigations and can make new API calls.
+
+| Status | Meaning |
+| --- | --- |
+| 200 | Health or completed-investigation retrieval |
+| 201 | Investigation completed and added to local history |
+| 404 | Unknown patient, result not found for that patient, or absent investigation |
+| 422 | Invalid JSON, invalid/missing identifiers, extra fields, or malformed investigation UUID |
+| 502 | Invalid coordinator output or agent execution failure |
+| 503 | Configuration, FHIR, OpenAI, or requested RAG dependency unavailable |
+| 500 | Unexpected application failure |
+
+Application errors use typed `code`, `message`, and `issues` fields. Validation
+issues expose safe field locations and error codes, not rejected values or raw
+request bodies. Upstream exception text and configuration secrets are not returned.
+Existing SDK traces and high-level investigation logs remain enabled; API shutdown
+flushes the standard trace exporter. No custom tracing system is introduced.
+
+`api.py` owns HTTP validation, status mapping, and serialization. Its investigation
+router resolves `InvestigationService` through a FastAPI dependency; a future
+authentication dependency can protect that router without changing the agent or
+application service. `services/investigations.py` owns patient/event validation,
+coordinator invocation, event/summary consistency checks, and bounded history.
+Tests use FastAPI's `TestClient`, mocked dependencies, and an actual SDK/tool run
+with a mocked model; no live API or database is required.
+
 ## Architecture and scope
 
 The package uses a `src/` layout. `fhir/client.py` handles HTTP reads/searches;
@@ -308,11 +386,13 @@ backed by the five-patient `data/fhir/bundle.json` collection. Domain retrieval
 has no agent framework dependency. Tests use `httpx.MockTransport` and require
 neither a running FHIR service nor live model access.
 
-The planned workflow receives synthetic lab results through FastAPI, coordinates
-controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RAG,
-and produces a structured summary for human approval before any simulated action.
+The application boundary receives synthetic lab notifications through FastAPI
+and coordinates controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RAG,
+and produces a structured summary for clinician review. Human approval and
+simulated downstream actions remain planned.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
 The current implementation includes local synthetic FHIR retrieval, PostgreSQL/
-pgvector RAG, and one agent with structured output and SDK tracing. FastAPI,
-multiple agents, a frontend, and approval/action execution remain future work.
+pgvector RAG, one agent with structured output and SDK tracing, and a FastAPI
+application boundary. Authentication, multiple agents, a frontend, and
+approval/action execution remain future work.

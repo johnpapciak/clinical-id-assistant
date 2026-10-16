@@ -6,9 +6,11 @@ from agents import (
     custom_span, gen_trace_id, trace,
 )
 from openai import AsyncOpenAI
+from pydantic import TypeAdapter
 
 from infectious_disease_assistant.config import AgentSettings
 from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
+from infectious_disease_assistant.models.patient import MicrobiologyResultId
 from infectious_disease_assistant.rag.models import GuidelineSearch
 from infectious_disease_assistant.observability import InvestigationHooks, log_event, trace_url
 from infectious_disease_assistant.services.patients import get_patient_context
@@ -24,9 +26,10 @@ All patient data is synthetic. Investigate a new microbiology-result notificatio
 using read-only patient tools for the patient selected by the application
 and the optional search_guidelines tool.
 
-Start with get_microbiology_results. Identify the newest result from its dates;
-do not invent a result, assume it is positive, or equate culture growth with an
-infection. If there is no microbiology result, report the missing result and stop.
+Start with get_microbiology_results. If the notification names a result ID,
+review that exact result; otherwise identify the newest result from its dates.
+Do not substitute a newer result for a named event. Do not invent a result,
+assume it is positive, or equate culture growth with an infection. If there is no microbiology result, report the missing result and stop.
 Choose other tools only when their information is relevant to reviewing that
 result. Do not fetch every section automatically or follow a fixed checklist.
 Medication and allergy records may provide context for clinician review;
@@ -54,8 +57,9 @@ You may describe relevant recorded information, missing context, and questions
 requiring clinician review. Do not provide an action plan or take downstream action.
 
 Return one ClinicalSummary matching the supplied schema. microbiology_result_id,
-organism, and specimen_type must describe the newest retrieved microbiology
-result exactly, or all be null when no result exists. A no-growth result has a
+organism, and specimen_type must describe the requested retrieved microbiology
+result exactly, or the newest retrieved result if no result ID was requested.
+All three must be null when no result exists. A no-growth result has a
 null organism. Copy relevant medication, allergy, lab, and infection records
 exactly as returned by their tools, or use empty lists. Do not fill gaps.
 For each important finding, include evidence with a tool_name and zero-based
@@ -95,9 +99,12 @@ async def investigate_patient(
     *,
     trace_id: str | None = None,
     guideline_question: str | None = None,
+    microbiology_result_id: str | None = None,
 ) -> ClinicalSummary:
     if guideline_question is not None:
         guideline_question = GuidelineSearch(query=guideline_question).query
+    if microbiology_result_id is not None:
+        microbiology_result_id = TypeAdapter(MicrobiologyResultId).validate_python(microbiology_result_id)
     investigation_trace_id = trace_id if trace_id is not None else gen_trace_id()
     trace_url(investigation_trace_id)
     safe_id = (
@@ -123,7 +130,8 @@ async def investigate_patient(
                     create_agent(settings, client),
                     input=(
                         f"Synthetic patient {context.patient_id}: a new microbiology result "
-                        "has been reported. Investigate it and summarize relevant information "
+                        + (f"{microbiology_result_id} has been reported. " if microbiology_result_id else "has been reported. ")
+                        + "Investigate it and summarize relevant information "
                         "for clinician review."
                         + (f" Consider guideline context for this question if relevant: {guideline_question}"
                            if guideline_question else "")
@@ -135,7 +143,10 @@ async def investigate_patient(
                 )
             if not isinstance(result.final_output, ClinicalSummary):
                 raise AgentDemoError("The agent returned no valid clinical summary")
-            summary = validate_summary_evidence(result.final_output, patient_id, context.tool_results)
+            summary = validate_summary_evidence(
+                result.final_output, patient_id, context.tool_results,
+                microbiology_result_id=microbiology_result_id,
+            )
             with custom_span(
                 "validated_clinical_summary", data={"summary": summary.model_dump(mode="json")},
             ):
