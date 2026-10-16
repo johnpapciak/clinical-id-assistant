@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 from pydantic import Field, StringConstraints
 
 from infectious_disease_assistant.rag.models import GuidelineCitation
+from infectious_disease_assistant.models.workflow import FollowupAction
 from infectious_disease_assistant.models.patient import (
     Allergy, HealthcareModel, LabResult, Medication, PatientId, PreviousInfection,
 )
@@ -42,4 +43,5 @@ class ClinicalSummary(HealthcareModel):
     items_for_clinician_review: list[NonEmptyText] = Field(default_factory=list)
     evidence_sources: list[ToolName] = Field(default_factory=list)
     guideline_sources: list[GuidelineCitation] = Field(default_factory=list)
+    proposed_action: FollowupAction | None = None
     disclaimer: Literal[CLINICAL_DISCLAIMER] = CLINICAL_DISCLAIMER

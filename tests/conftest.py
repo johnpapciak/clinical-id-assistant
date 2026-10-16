@@ -178,3 +178,9 @@ def guideline_match():
         text="Preserve creatinine value, unit, date, and flag; identify missing baseline context.",
         distance=0.1, similarity=0.9,
     )
+
+
+@pytest.fixture
+def workflow_store():
+    from workflow_fake import FakeWorkflowStore
+    return FakeWorkflowStore()

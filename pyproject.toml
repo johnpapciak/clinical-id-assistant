@@ -32,3 +32,4 @@ markers = ["integration: requires an explicitly configured PostgreSQL/pgvector t
 
 [tool.setuptools.package-data]
 "infectious_disease_assistant.rag" = ["sql/*.sql"]
+"infectious_disease_assistant.workflow" = ["sql/*.sql"]

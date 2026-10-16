@@ -1,4 +1,7 @@
 import re
+import hashlib
+import json
+from importlib.metadata import version
 from time import perf_counter
 
 from agents import (
@@ -8,6 +11,7 @@ from agents import (
 from openai import AsyncOpenAI
 from pydantic import TypeAdapter
 
+from infectious_disease_assistant.workflow.audit import RunAudit
 from infectious_disease_assistant.config import AgentSettings
 from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
 from infectious_disease_assistant.models.patient import MicrobiologyResultId
@@ -54,7 +58,12 @@ Do not diagnose the patient, prescribe medication, suggest drug selection or
 doses, or independently recommend starting, stopping, or changing medication.
 Do not turn a lab flag into a new diagnosis or infer medication appropriateness.
 You may describe relevant recorded information, missing context, and questions
-requiring clinician review. Do not provide an action plan or take downstream action.
+requiring clinician review. You may propose a create_followup_task action for a
+clinician to review the result or missing context. Give a concise title and
+description without treatment instructions. It is a simulated task proposal,
+not execution: explicit human approval is required. Leave proposed_action null
+when no task is relevant. Never execute downstream actions or propose autonomous
+diagnosis, prescribing, or medication changes.
 
 Return one ClinicalSummary matching the supplied schema. microbiology_result_id,
 organism, and specimen_type must describe the requested retrieved microbiology
@@ -79,6 +88,16 @@ advice. Do not include internal reasoning. Use this exact disclaimer:
 INSTRUCTIONS += f"\n{CLINICAL_DISCLAIMER}"
 
 
+def agent_configuration_version() -> str:
+    configuration = {
+        "instructions": INSTRUCTIONS, "schema": ClinicalSummary.model_json_schema(),
+        "tools": [tool.name for tool in [*PATIENT_TOOLS, search_guidelines]],
+        "sdk_version": version("openai-agents"), "max_turns": MAX_AGENT_TURNS,
+        "model_settings": {"tool_choice": "auto", "store": True},
+    }
+    return hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
+
+
 class AgentDemoError(RuntimeError):
     """The agent did not produce a valid clinical summary."""
 
@@ -100,6 +119,7 @@ async def investigate_patient(
     trace_id: str | None = None,
     guideline_question: str | None = None,
     microbiology_result_id: str | None = None,
+    audit: RunAudit | None = None,
 ) -> ClinicalSummary:
     if guideline_question is not None:
         guideline_question = GuidelineSearch(query=guideline_question).query
@@ -118,6 +138,8 @@ async def investigate_patient(
         patient = get_patient_context(patient_id)
         context = PatientContext(patient.patient_id, patient.reference_date)
         settings = AgentSettings()
+        if audit is not None:
+            audit.configure(settings.openai_model, agent_configuration_version())
         with trace(
             "Synthetic infectious-disease investigation", trace_id=investigation_trace_id,
             metadata={"patient_id": patient.patient_id, "synthetic_data": True},
@@ -137,7 +159,7 @@ async def investigate_patient(
                            if guideline_question else "")
                     ),
                     context=context,
-                    hooks=InvestigationHooks(investigation_trace_id),
+                    hooks=InvestigationHooks(investigation_trace_id, audit=audit),
                     max_turns=MAX_AGENT_TURNS,
                     run_config=RunConfig(tracing_disabled=False, trace_include_sensitive_data=True),
                 )
