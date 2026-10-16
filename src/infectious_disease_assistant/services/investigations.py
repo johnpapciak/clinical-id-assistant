@@ -7,6 +7,7 @@ from agents.exceptions import AgentsException
 from openai import OpenAIError
 from pydantic import ValidationError
 
+from infectious_disease_assistant.guardrails import validate_safe_presentation
 from infectious_disease_assistant.agent import AgentDemoError, investigate_patient
 from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
@@ -70,6 +71,7 @@ class InvestigationService:
                 summary.patient_id, summary.microbiology_result_id, summary.organism, summary.specimen_type
             ) != (request.patient_id, target.result_id, target.organism, target.specimen):
                 raise InvestigationSummaryError()
+            validate_safe_presentation(summary)
             audit.finish()
             return await asyncio.to_thread(self.store.complete, investigation_id, summary, audit.run, audit.events)
         except (patients.PatientNotFoundError, MicrobiologyResultNotFoundError):

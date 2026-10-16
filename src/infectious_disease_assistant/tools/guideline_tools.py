@@ -1,5 +1,9 @@
 import asyncio
 import json
+from typing import Annotated
+
+from pydantic import Field, StringConstraints
+from infectious_disease_assistant.rag.models import GuidelineSearch
 
 from agents import RunContextWrapper, function_tool
 
@@ -9,10 +13,15 @@ from infectious_disease_assistant.tools.patient_tools import PatientContext
 
 @function_tool(failure_error_function=None)
 async def search_guidelines(
-    context: RunContextWrapper[PatientContext], query: str, top_k: int = 3,
+    context: RunContextWrapper[PatientContext],
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)],
+    top_k: Annotated[int, Field(ge=1, le=10, strict=True)] = 3,
 ) -> str:
     """Search synthetic guideline review context by topic, without patient details; use only when relevant."""
-    matches = await asyncio.to_thread(service.search_guidelines, query, top_k)
+    request = GuidelineSearch(query=query, top_k=top_k)
+    if 'PATIENT_' in request.query.upper():
+        raise ValueError('Guideline queries must use topics without patient identifiers')
+    matches = await asyncio.to_thread(service.search_guidelines, request.query, request.top_k)
     records = context.context.tool_results.setdefault("search_guidelines", [])
     known_ids = {record.chunk_id for record in records}
     for match in matches:

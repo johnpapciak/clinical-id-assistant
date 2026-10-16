@@ -2,15 +2,40 @@ import json
 import logging
 import re
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TextIO
+from typing import Any, TextIO
 
 from agents import Agent, RunContextWrapper, RunHooks, Tool
+from agents.items import ModelResponse
+from pydantic import BaseModel
 
+from infectious_disease_assistant.models.clinical_summary import ToolName
 from infectious_disease_assistant.tools.patient_tools import PatientContext
 from infectious_disease_assistant.workflow.audit import RunAudit
 
 LOGGER = logging.getLogger("infectious_disease_assistant")
+
+
+@dataclass
+class ToolCallObservation:
+    tool_call_id: str
+    tool_name: str
+    arguments_json: str
+    completed: bool = False
+
+
+@dataclass
+class ExecutionObservation:
+    tool_calls: list[ToolCallObservation] = field(default_factory=list)
+    tool_results: dict[ToolName, list[BaseModel]] = field(default_factory=dict)
+    model_name: str | None = None
+    latency_ms: float | None = None
+    error_type: str | None = None
+    usage: dict[str, int] | None = None
+
+    def capture_usage(self, usage: Any) -> None:
+        self.usage = {name: getattr(usage, name) for name in ("requests", "input_tokens", "output_tokens", "total_tokens")}
 
 
 class JsonEventFormatter(logging.Formatter):
@@ -61,13 +86,23 @@ def log_event(
 
 
 class InvestigationHooks(RunHooks[PatientContext]):
-    def __init__(self, trace_id: str, audit: RunAudit | None = None):
+    def __init__(self, trace_id: str, audit: RunAudit | None = None, observation: ExecutionObservation | None = None):
         self.trace_id = trace_id
         self.audit = audit
+        self.observation = observation
+
+    async def on_llm_end(
+        self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext], response: ModelResponse,
+    ) -> None:
+        if self.observation is not None:
+            self.observation.capture_usage(context.usage)
 
     async def on_tool_start(
         self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext], tool: Tool,
     ) -> None:
+        if self.observation is not None:
+            self.observation.tool_calls.append(ToolCallObservation(context.tool_call_id, tool.name, context.tool_arguments))
+            self.observation.capture_usage(context.usage)
         if self.audit is not None:
             self.audit.tool_started(context.tool_call_id, tool.name)
         log_event(
@@ -79,6 +114,10 @@ class InvestigationHooks(RunHooks[PatientContext]):
         self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext],
         tool: Tool, result: object,
     ) -> None:
+        if self.observation is not None:
+            call = next(item for item in self.observation.tool_calls if item.tool_call_id == context.tool_call_id)
+            call.completed = True
+            self.observation.capture_usage(context.usage)
         if self.audit is not None:
             self.audit.tool_completed(context.tool_call_id, len(context.context.tool_results.get(tool.name, ())))
         log_event(
@@ -86,3 +125,7 @@ class InvestigationHooks(RunHooks[PatientContext]):
             trace_id=self.trace_id, tool_name=tool.name,
             record_count=len(context.context.tool_results.get(tool.name, ())),
         )
+
+    async def on_agent_end(self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext], output: Any) -> None:
+        if self.observation is not None:
+            self.observation.capture_usage(context.usage)

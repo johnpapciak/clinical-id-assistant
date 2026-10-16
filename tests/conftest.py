@@ -105,6 +105,7 @@ def agent_model(monkeypatch, tmp_path, sdk_traces):
 def make_clinical_summary():
     from infectious_disease_assistant.models.clinical_summary import ClinicalFinding, ClinicalSummary, EvidenceReference
     from infectious_disease_assistant.services.patients import get_patient_summary
+    from infectious_disease_assistant.guardrails import missing_information
 
     def make(patient_id="PATIENT_001", tools=None):
         if tools is None:
@@ -126,7 +127,10 @@ def make_clinical_summary():
                 text="A recorded microbiology result is available.",
                 evidence=[EvidenceReference(tool_name="get_microbiology_results", record_index=0)],
             )] if latest else [],
-            missing_information=[] if latest else ["No microbiology results recorded."],
+            missing_information=missing_information({name: getattr(patient, attribute) for name, attribute in {
+                "get_microbiology_results": "microbiology_results", "get_medications": "medications",
+                "get_allergies": "allergies", "get_recent_labs": "recent_labs", "get_previous_infections": "previous_infections",
+            }.items() if name in tools}),
             evidence_sources=tools,
         )
 

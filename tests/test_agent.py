@@ -14,6 +14,7 @@ from infectious_disease_assistant.agent import (
     investigate_patient,
 )
 from infectious_disease_assistant.fhir.errors import FhirError
+from infectious_disease_assistant.models.summary_draft import SummaryDraft
 from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
 from infectious_disease_assistant.services import patients
 from infectious_disease_assistant.services.patients import InvalidPatientIdError, PatientNotFoundError
@@ -32,7 +33,13 @@ def tool_response(names, turn=0):
 
 
 def final_response(summary):
-    text = summary.model_dump_json() if isinstance(summary, ClinicalSummary) else summary
+    if isinstance(summary, ClinicalSummary):
+        fields = {name: getattr(summary, name) for name in SummaryDraft.model_fields if name in ClinicalSummary.model_fields}
+        draft = SummaryDraft(**fields, findings=[reference for finding in summary.important_findings for reference in finding.evidence],
+                             propose_followup=summary.proposed_action is not None)
+        text = draft.model_dump_json()
+    else:
+        text = summary
     return Response(
         output=[ResponseOutputMessage(
             id="message-final", type="message", role="assistant", status="completed",
@@ -82,7 +89,7 @@ def test_sdk_executes_only_model_requested_tools(agent_model, patient_id, plan, 
     assert len(sdk_traces.traces) == 1
     responses = [span.span_data for span in sdk_traces.spans if span.span_data.type == "response"]
     assert len(responses) == len(plan) + 1
-    assert ClinicalSummary.model_validate_json(responses[-1].response.output[0].content[0].text) == review
+    assert SummaryDraft.model_validate_json(responses[-1].response.output[0].content[0].text).patient_id == review.patient_id
     assert "new microbiology result" in str(responses[0].input)
     assert sdk_traces.traces[0].tracing_api_key == "test-key-not-real"
     assert "test-key-not-real" not in json.dumps(sdk_traces.traces[0].export())
@@ -111,7 +118,7 @@ def test_runner_has_one_agent_scoped_context_and_bounded_execution(agent_model, 
     assert [tool.name for tool in agent.tools] == [tool.name for tool in PATIENT_TOOLS] + ["search_guidelines"]
     assert agent.model_settings.tool_choice == "auto"
     assert agent.model_settings.store is True
-    assert agent.output_type is ClinicalSummary
+    assert agent.output_type is SummaryDraft
     assert args.kwargs["context"].patient_id == "PATIENT_002"
     assert args.kwargs["run_config"].tracing_disabled is False
     assert args.kwargs["run_config"].trace_include_sensitive_data is True
@@ -196,7 +203,7 @@ def test_unsupported_output_fails_without_completed_event(agent_model, make_clin
     with pytest.raises(SummaryEvidenceError):
         asyncio.run(investigate_patient("PATIENT_001"))
     assert caplog.records[-1].message == "investigation_failed"
-    assert caplog.records[-1].event_fields["error_type"] == "SummaryEvidenceError"
+    assert caplog.records[-1].event_fields["error_type"] == "SafetyViolation"
     assert "investigation_completed" not in caplog.text
     assert "Fabricated organism" not in caplog.text
 
@@ -210,7 +217,7 @@ def test_agent_can_combine_fhir_tools_with_optional_rag(agent_model, guideline_m
     monkeypatch.setattr("infectious_disease_assistant.tools.guideline_tools.service.search_guidelines", search)
     expected = make_clinical_summary(tools=["get_microbiology_results", "get_recent_labs", "search_guidelines"])
     expected.important_findings.append(ClinicalFinding(
-        text="Synthetic checklist context identifies baseline renal measurements as review context.",
+        text="Synthetic guideline context is cited for clinician review.",
         evidence=[EvidenceReference(tool_name="search_guidelines", record_index=0)],
     ))
     expected.guideline_sources = [guideline_match.citation()]
@@ -271,7 +278,7 @@ def test_named_historical_microbiology_event_is_investigated(agent_model, make_c
 def test_named_event_cannot_be_silently_replaced_by_newest_result(agent_model, make_clinical_summary):
     expected = make_clinical_summary(tools=["get_microbiology_results"])
     agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(expected)]
-    with pytest.raises(SummaryEvidenceError, match="requested microbiology result"):
+    with pytest.raises(SummaryEvidenceError, match="unsupported_fact_or_citation"):
         asyncio.run(investigate_patient("PATIENT_001", microbiology_result_id="MICRO_001_PRIOR"))
 
 

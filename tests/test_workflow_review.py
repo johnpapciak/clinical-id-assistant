@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from infectious_disease_assistant.api import create_app
+from infectious_disease_assistant.guardrails import SAFE_FOLLOWUP
 from infectious_disease_assistant.current_user import get_current_user
 from infectious_disease_assistant.models.workflow import CurrentUser, FollowupAction
 from infectious_disease_assistant.services import investigations
@@ -14,7 +15,7 @@ from infectious_disease_assistant.workflow.errors import ActionNotApprovedError
 @pytest.fixture
 def client(workflow_store, monkeypatch, make_clinical_summary, sdk_traces):
     summary = make_clinical_summary(tools=["get_microbiology_results"])
-    summary.proposed_action = FollowupAction(title="Review synthetic microbiology", description="Review missing symptom and specimen context.")
+    summary.proposed_action = SAFE_FOLLOWUP.model_copy(deep=True)
     monkeypatch.setattr(investigations, "investigate_patient", AsyncMock(return_value=summary))
     app = create_app(store=workflow_store)
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(reviewer_id="REVIEWER_002")
