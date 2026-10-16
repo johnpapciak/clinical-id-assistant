@@ -148,9 +148,18 @@ Python verifies patient identity, the newest culture fields, exact membership of
 clinical records in the tools actually called, and finding citations using
 zero-based indices into each tool's `records` array. `evidence_sources` lists all
 tools called, even those returning empty lists. Unsupported structured facts or
-invalid references fail the investigation. This does not verify the meaning of
-free-text findings or review questions; those still need human source checking.
-The agent must not diagnose, prescribe, or recommend medication changes.
+invalid references fail the investigation.
+
+The model returns a constrained `SummaryDraft`: selected facts, record references,
+review-topic enums, and a follow-up proposal flag. Python renders `ClinicalSummary`
+using fixed review-only sentences and a fixed simulated task proposal. The model
+cannot supply free-text diagnoses, prescribing instructions, medication changes,
+or invented narrative facts through this output schema. Retrieved guideline text
+is never copied into final instructions. Missing records and records that were
+not reviewed have distinct descriptions. This deliberately limits narrative
+flexibility; fact selection, completeness, and clinical relevance still require
+evaluation and human review. These checks apply to newly generated outputs;
+existing persisted summaries are not rewritten.
 
 ## Tracing and development logs
 
@@ -483,6 +492,55 @@ separate disposable `IDA_TEST_DATABASE_URL` described above and run:
 python -m pytest -m integration tests/integration -q
 ```
 
+## Safety evaluation
+
+Run the 20-case deterministic suite without API credentials, a running FHIR
+server, or PostgreSQL:
+
+```sh
+python -m infectious_disease_assistant.evals.run
+python -m infectious_disease_assistant.evals.run --output eval-results/scripted.json
+```
+
+The default `scripted` mode executes the real SDK runner, tools, domain services,
+FHIR parsing, and final safety checks against fixture-backed mock HTTP. Authored
+model responses and guideline matches are frozen reference scripts. Passing this
+mode verifies the pipeline and scorer; it does not measure a model's tool choices,
+clinical reasoning, or vector retrieval quality. No model or embedding API calls
+are made, and trace export is disabled for replay.
+
+For a model evaluation, start the existing local synthetic FHIR server and
+PostgreSQL, ingest guidelines as described above, and configure `OPENAI_MODEL`,
+`OPENAI_API_KEY`, and the existing database/embedding settings. Then run:
+
+```sh
+python -m infectious_disease_assistant.evals.run --mode live --output eval-results/live.json
+```
+
+Live mode runs 15 clinical scenarios through the actual coordinator and its
+configured FHIR/RAG tools, with normal SDK tracing. It can incur model and
+embedding API usage. Five additional cases inject unsafe candidates directly at
+the final-output safety boundary in both modes; they test rejection, rather than
+whether a model spontaneously produces unsafe claims.
+
+The console reports pass counts, blocked attacks, failure categories, and median/
+p95 clinical pipeline latency. JSON includes per-case checks, actual tool names
+and arguments, accepted summaries, model/configuration version, dataset hashes,
+and SDK request/token usage when available. Replay usage is explicitly nonbillable;
+SDK usage excludes RAG embedding calls and does not estimate money. Reports are
+ignored by Git. Exit codes are 0 for all checks passing, 1 for case failures, and
+2 for invalid inputs or unavailable configuration. Missing live credentials
+produce an unavailable report, never a simulated live pass.
+
+Checks cover schema validity, required facts, grounding, tool selection/arguments,
+retrieval expectations, citation metadata, prohibited claim literals, and the
+human-review output contract. Literal checks supplement structured guardrails;
+they are not the clinical safety boundary. The existing workflow integration
+tests separately verify that only recorded approval can execute an action.
+Model-judged evaluation is not run or mixed into deterministic scores.
+Corpus provenance, expectations, and limitations are in
+[data/evals/README.md](data/evals/README.md).
+
 ## Architecture and scope
 
 The package uses a `src/` layout. `fhir/client.py` handles HTTP reads/searches;
@@ -500,6 +558,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
 The current implementation includes local synthetic FHIR retrieval, PostgreSQL/
 pgvector RAG, one agent with structured output and SDK tracing, and a FastAPI
-application boundary with persistent workflow audit and human approval.
+application boundary with persistent workflow audit, human approval, structured
+safety guardrails, and deterministic/live evaluation commands.
 Authentication, multiple agents, a frontend, and real downstream integrations
 remain future work.

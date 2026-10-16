@@ -14,7 +14,9 @@ flowchart TD
     App --> Coordinator["OpenAI Agents SDK coordinator"]
     Coordinator --> Tools["Controlled tools"]
     Tools --> Context["Synthetic FHIR data and RAG"]
-    Context --> Summary["Structured clinical summary"]
+    Context --> Draft["Constrained fact/reference draft"]
+    Draft --> Safety["Python evidence checks + review-only rendering"]
+    Safety --> Summary["Structured clinical summary"]
     Summary --> Approval["Human approval"]
     Approval --> Action["Simulated downstream action"]
 ```
@@ -37,7 +39,9 @@ approve a proposed action before a simulated downstream action can occur.
 - `workflow/database.py` and `workflow/sql/`: durable PostgreSQL state, versioned migrations, and review transactions.
 - `workflow/audit.py`: high-level per-run audit collection; SDK tracing remains unchanged.
 - `workflow/actions.py`: approval-gated simulated follow-up task insertion.
-- `models/clinical_summary.py`: structured agent output, record references, and disclaimer.
+- `models/summary_draft.py`: constrained model output with fact selections, evidence references, and review-topic enums.
+- `models/clinical_summary.py`: application output, record references, and disclaimer.
+- `guardrails.py`: source grounding, fixed narrative rendering, and final safety validation.
 - `fhir/client.py`: `httpx` transport, reads/searches, envelope checks, and reference retrieval.
 - `fhir/models.py`: Pydantic models for the supported FHIR R4 resource subset.
 - `fhir/parsing.py`: pure mapping from FHIR resources to existing domain objects.
@@ -58,6 +62,8 @@ approve a proposed action before a simulated downstream action can occur.
 - `compose.yaml`: loopback-only PostgreSQL with pgvector and a persistent volume.
 - `data/guidelines/`: CC0 project-authored synthetic review checklists and provenance manifest.
 - `data/fhir/bundle.json`: canonical synthetic R4 resources for five patients.
+- `evals/`: typed evaluation cases/reports, deterministic scoring, SDK replay, and live runner.
+- `data/evals/`: 20 authored synthetic expectations and separate frozen replay responses.
 - `tests/`: deterministic tests plus mocked agent, tool, configuration, and CLI tests.
 
 The server loads and validates a fixture Bundle at startup. Agent tools never
@@ -80,6 +86,8 @@ CLI patient ID + microbiology notification
   -> FHIR resource/search Bundle JSON
   -> FHIR parsing and Pydantic domain objects
   -> domain service and tool JSON returned to the coordinator
+  -> SummaryDraft: source facts, references, allowlisted review topics
+  -> Python grounding checks and review-only rendering
   -> ClinicalSummary validated against retrieved records
   -> JSON decision support for human clinician review
 ```
@@ -91,14 +99,20 @@ agent framework code. The SDK runner
 handles tool dispatch, continuation, and Pydantic output parsing. Python enforces
 patient scope, a turn limit, failure propagation, the fixed disclaimer, and
 membership of typed clinical facts in the records actually returned by tools.
-Finding references must point to existing returned records. Free-text meaning
-and clinical appropriateness still need human verification. No prescribing,
-record mutation, or downstream action capability is exposed.
+Finding references must point to existing returned records. The model cannot
+author narrative findings, review instructions, missing-context claims, or task
+text: these are rendered from fixed templates. A proposal flag selects a fixed
+clinician-review task. The output gate also rejects unsupported facts and unsafe
+presentation before an investigation can be persisted. Source facts may record
+existing prescriptions and prior diagnoses; the agent cannot create new ones.
+Clinical relevance and completeness still need human verification. No prescribing,
+record mutation, or downstream action capability is exposed to the model.
 
 The agent demo makes model calls; guideline ingestion and search also make
 OpenAI embedding calls. FHIR retrieval remains deterministic and independent. The agent demo uses a
 standard SDK trace with native model and function spans, plus a supported SDK custom span containing the
-validated output. Detailed trace payloads and response storage are enabled for
+validated application output; model spans contain the constrained draft.
+Detailed trace payloads and response storage are enabled for
 synthetic development data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
 payloads. PostgreSQL persists guideline vectors and the application workflow audit.
@@ -148,6 +162,9 @@ The existing FHIR path supplies patient facts. The RAG path supplies general
 synthetic checklist context; it never substitutes for patient evidence. Search
 is optional and has no patient-ID parameter. Instructions ask for topic-only
 queries and forbid treating retrieved text as instructions or treatment authority.
+The tool validates query size and result count and rejects synthetic patient tokens
+in queries before embedding. Guideline text cannot become final narrative or
+action instructions; selected matches contribute validated citation metadata.
 
 The manifest preserves document provenance and usage rights. Ingestion adds a
 content hash, section, global per-document chunk index, and deterministic chunk
@@ -209,8 +226,8 @@ storing argument/result payloads or complete FHIR resources. A process crash can
 leave a running record; automatic recovery/retries remain unimplemented.
 
 Each run stores its model name, SDK trace ID, timestamps, and a SHA-256 fingerprint
-of instructions, structured schema, tools, SDK version, turn limit, and model
-options. The database audit supplements native SDK tracing, not replaces it.
+of instructions, draft schema, safety templates/disclaimer, tools, SDK version,
+turn limit, and model options. The database audit supplements native SDK tracing.
 API keys and database credentials never enter audit records or HTTP errors.
 
 `POST /investigations` waits for a persisted summary, then returns 201 with
@@ -221,7 +238,7 @@ Approval and rejection endpoints use the replaceable `CurrentUser` dependency;
 its server-configured synthetic reviewer token is a demo placeholder, not real
 authentication. No caller-supplied header or body field serves as identity.
 
-The agent can propose only a typed `create_followup_task` in its final summary;
+The agent can propose only a fixed review-only `create_followup_task` in its final summary;
 the SDK exposes no action execution tool. Approve/reject paths lock the
 investigation row. The transaction records the decision first, inserts the exact
 approved action as a simulated database task when present, and updates status.
@@ -246,3 +263,36 @@ Offline tests use a test-only store double. Opt-in PostgreSQL tests exercise
 restart/request persistence, actual SDK run audits with a mocked model,
 approval/rejection/modification, concurrent decision races, duplicate suppression,
 pre-approval action denial, database constraints, and rollback.
+
+## Safety evaluation boundary
+
+The dataset contains 15 clinical scenarios across the five synthetic patients and
+five deliberately unsafe final-output candidates. Expectations are stored apart
+from replay responses; neither the live coordinator nor replay model reads the
+scorer's expectations. Clinical scenarios include named historical results,
+recorded allergies/prescriptions, elevated or normal creatinine, missing data,
+and required/optional/forbidden guideline retrieval.
+
+`evals/run.py` supports two modes. Scripted mode uses a supported SDK `Model`
+implementation, fixture-backed `httpx.MockTransport`, and frozen guideline matches;
+the actual tools/services/SDK output parser and safety gate execute. Live mode
+uses the configured model and existing local FHIR/PostgreSQL services. Both modes
+inject the five attack candidates directly into the final safety validator;
+these are deterministic boundary tests, not model-judged red teaming.
+
+`evals/scoring.py` checks required typed facts, source membership, observed tool
+calls and raw arguments, citation metadata, schema validity, and review contracts.
+Unsafe candidates must be rejected with the expected category. An upstream
+failure is distinguished from invalid structured model output. Clinical latency
+and available coordinator SDK usage are reported separately from attack checks;
+scripted timing measures replay overhead and its usage is explicitly nonbillable.
+JSON reports record corpus/replay hashes and agent configuration fingerprints.
+No model judge, prompt optimizer, new service, or additional storage is introduced.
+
+The allowlisted renderer trades narrative flexibility for an enforceable output
+boundary. It does not prove clinical adequacy, decide whether every relevant tool
+was called, or assess vector ranking quality. Deterministic expectations measure
+those aspects only where defined. Actual approval transactions remain covered by
+workflow integration tests; reviewer-authored modified actions are recorded at the
+explicit human boundary and are not model-generated proposals. Historical stored
+summaries are not retroactively rewritten by this change.

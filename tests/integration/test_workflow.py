@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 
 from infectious_disease_assistant.api import create_app
+from infectious_disease_assistant.guardrails import SAFE_FOLLOWUP
 from infectious_disease_assistant.config import DatabaseSettings
 from infectious_disease_assistant.models.investigation import InvestigationRequest
 from infectious_disease_assistant.models.workflow import AgentRunRecord, CurrentUser, FollowupAction
@@ -47,7 +48,7 @@ def workflow_settings():
 def pending(workflow_settings,make_clinical_summary):
     store=WorkflowStore(workflow_settings)
     summary=make_clinical_summary(tools=['get_microbiology_results'])
-    summary.proposed_action=FollowupAction(title='Review synthetic microbiology',description='Review missing symptom and specimen context.')
+    summary.proposed_action=SAFE_FOLLOWUP.model_copy(deep=True)
     run=AgentRunRecord(trace_id='trace_'+uuid4().hex,started_at=utc_now(),model_name='test-model',configuration_version='a'*64)
     key=store.begin(InvestigationRequest(patient_id='PATIENT_001',microbiology_result_id='MICRO_001_RECENT'),run)
     run.status,run.completed_at='succeeded',utc_now()
@@ -57,7 +58,7 @@ def pending(workflow_settings,make_clinical_summary):
 def test_http_agent_review_persists_across_app_instances(workflow_settings,agent_model,make_clinical_summary):
     from test_agent import final_response,tool_response
     expected=make_clinical_summary(tools=['get_microbiology_results'])
-    expected.proposed_action=FollowupAction(title='Review synthetic microbiology',description='Review missing symptom and specimen context.')
+    expected.proposed_action=SAFE_FOLLOWUP.model_copy(deep=True)
     agent_model.side_effect=[tool_response(['get_microbiology_results']),final_response(expected)]
     with TestClient(create_app(WorkflowStore(workflow_settings))) as client:
         created=client.post('/investigations',json={'patient_id':'PATIENT_001','microbiology_result_id':'MICRO_001_RECENT'})
