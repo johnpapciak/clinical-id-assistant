@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,6 +9,7 @@ from openai import OpenAIError
 from infectious_disease_assistant.api import create_app, get_investigation_service
 from infectious_disease_assistant.fhir.errors import FhirTransportError
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
+from infectious_disease_assistant.models.workflow import AgentRunRecord
 from infectious_disease_assistant.models.investigation import ErrorResponse, InvestigationResponse
 from infectious_disease_assistant.services import investigations
 
@@ -24,8 +25,8 @@ def coordinator(monkeypatch, make_clinical_summary, fhir_api):
 
 
 @pytest.fixture
-def client(sdk_traces):
-    with TestClient(create_app()) as client:
+def client(sdk_traces, workflow_store):
+    with TestClient(create_app(store=workflow_store)) as client:
         yield client
 
 
@@ -43,12 +44,12 @@ def test_valid_investigation_returns_created_summary_and_location(client, coordi
     response = client.post("/investigations", json=VALID_REQUEST)
     assert response.status_code == 201
     result = InvestigationResponse.model_validate(response.json())
-    assert result.status == "completed"
+    assert result.status == "awaiting_review"
     assert result.summary == coordinator.return_value
     assert result.patient_id == "PATIENT_001"
     assert result.microbiology_result_id == "MICRO_001_RECENT"
     assert response.headers["location"] == f"/investigations/{result.investigation_id}"
-    coordinator.assert_awaited_once_with("PATIENT_001", microbiology_result_id="MICRO_001_RECENT")
+    coordinator.assert_awaited_once_with("PATIENT_001", microbiology_result_id="MICRO_001_RECENT", trace_id=ANY, audit=ANY)
     fetched = client.get(response.headers["location"])
     assert fetched.status_code == 200
     assert fetched.json() == response.json()
@@ -125,7 +126,7 @@ def test_failure_responses_do_not_expose_secrets(client, coordinator, exception,
     assert "secret-api-key" not in response.text
     assert "secret-password" not in response.text
     assert "Traceback" not in response.text
-    assert not client.app.state.investigations._completed
+    assert all(row.status == "failed" for row in client.app.state.investigations.store.records.values())
 
 
 def test_missing_agent_configuration_is_503_without_secret_input(client, monkeypatch):
@@ -152,7 +153,8 @@ def test_route_uses_overridable_application_dependency(client, make_clinical_sum
     from datetime import datetime, timezone
     record = InvestigationResponse(investigation_id=uuid4(), patient_id="PATIENT_001",
                                    microbiology_result_id="MICRO_001_RECENT", created_at=datetime.now(timezone.utc),
-                                   summary=make_clinical_summary())
+                                   summary=make_clinical_summary(), updated_at=datetime.now(timezone.utc),
+                                   agent_run=AgentRunRecord(trace_id="trace_"+"a"*32, started_at=datetime.now(timezone.utc)))
     service = Mock(create=AsyncMock(return_value=record), get=Mock(return_value=record))
     client.app.dependency_overrides[get_investigation_service] = lambda: service
     response = client.post("/investigations", json=VALID_REQUEST)
@@ -163,17 +165,17 @@ def test_route_uses_overridable_application_dependency(client, make_clinical_sum
     service.get.assert_called_once_with(record.investigation_id)
 
 
-def test_shutdown_flushes_standard_sdk_traces(sdk_traces):
-    with TestClient(create_app()) as client:
+def test_shutdown_flushes_standard_sdk_traces(sdk_traces, workflow_store):
+    with TestClient(create_app(store=workflow_store)) as client:
         assert client.get("/health").status_code == 200
     assert sdk_traces.flush_count == 1
 
 
-def test_api_runs_actual_sdk_and_clinical_tools(agent_model, sdk_traces, make_clinical_summary):
+def test_api_runs_actual_sdk_and_clinical_tools(agent_model, sdk_traces, make_clinical_summary, workflow_store):
     from test_agent import final_response, tool_response
     expected = make_clinical_summary(tools=["get_microbiology_results"])
     agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(expected)]
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(store=workflow_store)) as client:
         response = client.post("/investigations", json=VALID_REQUEST)
         assert response.status_code == 201
         result = InvestigationResponse.model_validate(response.json())
@@ -194,13 +196,13 @@ def test_extra_field_names_are_not_reflected_as_validation_details(client):
 
 
 @pytest.mark.parametrize("malformed_response", [False, True])
-def test_unexpected_errors_and_invalid_responses_are_sanitized(sdk_traces, malformed_response):
+def test_unexpected_errors_and_invalid_responses_are_sanitized(sdk_traces, malformed_response, workflow_store):
     service = Mock()
     if malformed_response:
         service.get.return_value = {"patient_id": "secret-api-key"}
     else:
         service.get.side_effect = RuntimeError("secret-api-key")
-    app = create_app()
+    app = create_app(store=workflow_store)
     app.dependency_overrides[get_investigation_service] = lambda: service
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(f"/investigations/{uuid4()}")

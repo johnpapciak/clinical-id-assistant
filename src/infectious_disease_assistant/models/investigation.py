@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, ConfigDict, Field
 
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
+from infectious_disease_assistant.models.workflow import AgentRunRecord, ApprovalDecision, FollowupTask, ToolEvent
 from infectious_disease_assistant.models.patient import HealthcareModel, MicrobiologyResultId, PatientId
 
 
@@ -18,9 +19,15 @@ class InvestigationResponse(HealthcareModel):
     investigation_id: UUID
     patient_id: PatientId
     microbiology_result_id: MicrobiologyResultId
-    status: Literal["completed"] = "completed"
+    status: Literal["running", "awaiting_review", "approved", "rejected", "failed"] = "running"
     created_at: AwareDatetime
-    summary: ClinicalSummary
+    summary: ClinicalSummary | None = None
+    updated_at: AwareDatetime
+    summary_id: UUID | None = None
+    agent_run: AgentRunRecord
+    tool_events: list[ToolEvent] = Field(default_factory=list)
+    approval: ApprovalDecision | None = None
+    followup_task: FollowupTask | None = None
 
 
 class HealthResponse(HealthcareModel):

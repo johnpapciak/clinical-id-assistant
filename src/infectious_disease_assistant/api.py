@@ -4,11 +4,15 @@ from typing import Annotated
 from uuid import UUID
 
 from agents import flush_traces
-from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
+from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from infectious_disease_assistant.config import Settings
+from infectious_disease_assistant.current_user import get_current_user
+from infectious_disease_assistant.models.workflow import ApproveRequest, CurrentUser, RejectRequest
+from infectious_disease_assistant.workflow.database import WorkflowStore
+from infectious_disease_assistant.workflow.errors import ReviewConflictError
 from infectious_disease_assistant.models.investigation import (
     ErrorResponse, HealthResponse, InvestigationRequest, InvestigationResponse, ValidationIssue,
 )
@@ -46,13 +50,37 @@ async def create_investigation(
     return result
 
 
+@investigations.get("/pending-review", response_model=list[InvestigationResponse])
+async def pending_review(service: InvestigationDependency, limit: int = Query(default=50, ge=1, le=100)) -> list[InvestigationResponse]:
+    return await asyncio.to_thread(service.pending, limit)
+
+
+@investigations.post("/{investigation_id}/approve", response_model=InvestigationResponse)
+async def approve_investigation(
+    investigation_id: UUID, body: ApproveRequest, service: InvestigationDependency,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> InvestigationResponse:
+    return await asyncio.to_thread(service.approve, investigation_id, user, body)
+
+
+@investigations.post("/{investigation_id}/reject", response_model=InvestigationResponse)
+async def reject_investigation(
+    investigation_id: UUID, body: RejectRequest, service: InvestigationDependency,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> InvestigationResponse:
+    return await asyncio.to_thread(service.reject, investigation_id, user, body)
+
+
 @investigations.get("/{investigation_id}", response_model=InvestigationResponse)
 async def get_investigation(investigation_id: UUID, service: InvestigationDependency) -> InvestigationResponse:
-    return service.get(investigation_id)
+    return await asyncio.to_thread(service.get, investigation_id)
 
 
 async def handle_investigation_error(request: Request, error: Exception) -> JSONResponse:
-    if isinstance(error, PatientNotFoundError):
+    if isinstance(error, ReviewConflictError):
+        payload = ErrorResponse(code="review_conflict", message="The investigation cannot accept this review decision.")
+        code = status.HTTP_409_CONFLICT
+    elif isinstance(error, PatientNotFoundError):
         payload = ErrorResponse(code="patient_not_found", message="The synthetic patient was not found.")
         code = status.HTTP_404_NOT_FOUND
     else:
@@ -73,6 +101,7 @@ async def handle_validation_error(request: Request, error: RequestValidationErro
             location=[
                 part if isinstance(part, int) or part in {
                     "body", "path", "query", "patient_id", "microbiology_result_id", "investigation_id",
+                    "note", "modified_action", "title", "description", "kind", "limit",
                 } else "unknown_field" for part in item["loc"]
             ],
             code=item["type"],
@@ -87,15 +116,16 @@ async def handle_unexpected_error(request: Request, error: Exception) -> JSONRes
     return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=payload.model_dump(mode="json"))
 
 
-def create_app() -> FastAPI:
+def create_app(store: WorkflowStore | None = None) -> FastAPI:
     app = FastAPI(title="Synthetic Infectious Disease Assistant", lifespan=lifespan, debug=False)
-    app.state.investigations = InvestigationService()
+    app.state.investigations = InvestigationService(store)
+    app.add_exception_handler(ReviewConflictError, handle_investigation_error)
     app.add_exception_handler(InvestigationError, handle_investigation_error)
     app.add_exception_handler(PatientNotFoundError, handle_investigation_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(Exception, handle_unexpected_error)
     app.include_router(investigations, responses={
-        code: {"model": ErrorResponse} for code in (404, 422, 500, 502, 503)
+        code: {"model": ErrorResponse} for code in (404, 409, 422, 500, 502, 503)
     })
 
     @app.get("/health", response_model=HealthResponse)

@@ -8,6 +8,7 @@ from typing import TextIO
 from agents import Agent, RunContextWrapper, RunHooks, Tool
 
 from infectious_disease_assistant.tools.patient_tools import PatientContext
+from infectious_disease_assistant.workflow.audit import RunAudit
 
 LOGGER = logging.getLogger("infectious_disease_assistant")
 
@@ -60,12 +61,15 @@ def log_event(
 
 
 class InvestigationHooks(RunHooks[PatientContext]):
-    def __init__(self, trace_id: str):
+    def __init__(self, trace_id: str, audit: RunAudit | None = None):
         self.trace_id = trace_id
+        self.audit = audit
 
     async def on_tool_start(
         self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext], tool: Tool,
     ) -> None:
+        if self.audit is not None:
+            self.audit.tool_started(context.tool_call_id, tool.name)
         log_event(
             "tool_requested", patient_id=context.context.patient_id,
             trace_id=self.trace_id, tool_name=tool.name,
@@ -75,6 +79,8 @@ class InvestigationHooks(RunHooks[PatientContext]):
         self, context: RunContextWrapper[PatientContext], agent: Agent[PatientContext],
         tool: Tool, result: object,
     ) -> None:
+        if self.audit is not None:
+            self.audit.tool_completed(context.tool_call_id, len(context.context.tool_results.get(tool.name, ())))
         log_event(
             "tool_completed", patient_id=context.context.patient_id,
             trace_id=self.trace_id, tool_name=tool.name,

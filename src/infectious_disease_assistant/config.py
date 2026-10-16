@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     data_dir: Path = Path("data")
+    current_user_id: Annotated[str, StringConstraints(pattern=r"^REVIEWER_[0-9]{3}$")] = "REVIEWER_001"
     fhir_base_url: str = "http://127.0.0.1:8765/fhir"
 
     @field_validator("fhir_base_url")
@@ -48,16 +49,10 @@ class AgentSettings(Settings):
         return value
 
 
-class RagSettings(Settings):
+class DatabaseSettings(Settings):
     model_config = SettingsConfigDict(hide_input_in_errors=True)
 
     database_url: SecretStr = Field(validation_alias="DATABASE_URL")
-    embedding_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(
-        default="text-embedding-3-small", validation_alias="OPENAI_EMBEDDING_MODEL",
-    )
-    embedding_dimensions: int = Field(default=1536, ge=1, le=3072)
-    chunk_words: int = Field(default=120, ge=10, le=2000)
-    chunk_overlap: int = Field(default=20, ge=0)
 
     @field_validator("database_url")
     @classmethod
@@ -65,6 +60,15 @@ class RagSettings(Settings):
         if urlsplit(value.get_secret_value()).scheme not in {"postgres", "postgresql"}:
             raise ValueError("DATABASE_URL must be a PostgreSQL connection URL")
         return value
+
+
+class RagSettings(DatabaseSettings):
+    embedding_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(
+        default="text-embedding-3-small", validation_alias="OPENAI_EMBEDDING_MODEL",
+    )
+    embedding_dimensions: int = Field(default=1536, ge=1, le=3072)
+    chunk_words: int = Field(default=120, ge=10, le=2000)
+    chunk_overlap: int = Field(default=20, ge=0)
 
     @field_validator("chunk_overlap")
     @classmethod

@@ -302,8 +302,9 @@ opt tests in: export `IDA_TEST_DATABASE_URL` explicitly.
 
 Install the updated dependencies with `python -m pip install -e '.[dev]'`.
 Keep the synthetic FHIR service running in a separate terminal and set
-`OPENAI_MODEL` and `OPENAI_API_KEY` in your ignored `.env`. Initialize and ingest
-the guideline database as described above if the agent requests RAG. Start the
+`OPENAI_MODEL` and `OPENAI_API_KEY` in your ignored `.env`. Start PostgreSQL and initialize workflow tables before using investigation endpoints:
+`python -m infectious_disease_assistant.workflow init`.
+Initialize and ingest the guideline corpus as described above if the agent requests RAG. Start the
 API from the repository root with the virtual environment active:
 
 ```sh
@@ -334,7 +335,9 @@ accepted in the HTTP request.
 POST validates the patient and result against FHIR before invoking the coordinator.
 It waits for completion and returns **201 Created**, a `Location` header, and an
 `InvestigationResponse` containing a UUID `investigation_id`, patient/result IDs,
-`status: "completed"`, UTC `created_at`, and the existing structured `summary`.
+`status: "awaiting_review"`, UTC `created_at`/`updated_at`, the structured
+`summary`, `summary_id`, `agent_run`, and high-level `tool_events`.
+`approval` and `followup_task` are initially null.
 A named historical result is investigated exactly; Python rejects a summary that
 silently substitutes the newest result. The CLI keeps its existing newest-result
 behavior, and the coordinator remains callable without importing FastAPI.
@@ -346,16 +349,18 @@ agent again:
 curl "http://127.0.0.1:8000/investigations/<investigation_id>"
 ```
 
-Completed records are held in memory, limited to the latest 100 completions per
-application instance. Restarting/reloading the process clears them; eviction also
-makes GET return 404. Use a single worker for this demo. No persistent investigation
-tables, task queue, polling states, or duplicate-request suppression are added.
-Repeated POSTs create independent investigations and can make new API calls.
+Investigations, run/tool audit records, summaries, review decisions, and simulated
+follow-up tasks now persist in PostgreSQL across requests and app restarts. There
+is no process-local history cache or eviction limit. The CLI remains independent
+of the workflow database and only prints a summary/proposal; it cannot approve or
+execute actions. Repeated POSTs create independent investigations. No background
+job queue, automatic rerun, or request deduplication is added.
 
 | Status | Meaning |
 | --- | --- |
 | 200 | Health or completed-investigation retrieval |
-| 201 | Investigation completed and added to local history |
+| 201 | Summary persisted and awaiting human review |
+| 409 | Conflicting decision, or investigation not ready for review |
 | 404 | Unknown patient, result not found for that patient, or absent investigation |
 | 422 | Invalid JSON, invalid/missing identifiers, extra fields, or malformed investigation UUID |
 | 502 | Invalid coordinator output or agent execution failure |
@@ -372,9 +377,111 @@ flushes the standard trace exporter. No custom tracing system is introduced.
 router resolves `InvestigationService` through a FastAPI dependency; a future
 authentication dependency can protect that router without changing the agent or
 application service. `services/investigations.py` owns patient/event validation,
-coordinator invocation, event/summary consistency checks, and bounded history.
+coordinator invocation, event/summary consistency checks, and review orchestration.
+`workflow/database.py` owns PostgreSQL transactions and durable records.
 Tests use FastAPI's `TestClient`, mocked dependencies, and an actual SDK/tool run
 with a mocked model; no live API or database is required.
+
+## Persistent audit and human approval
+
+The workflow uses the existing `DATABASE_URL` and Docker PostgreSQL service. It
+has a separate numbered migration ledger from RAG; existing guideline migrations
+are unchanged. Run initialization once before starting the API (re-running is safe):
+
+```sh
+docker compose up -d --wait guidelines-db
+python -m infectious_disease_assistant.workflow init
+```
+
+The relational tables are `ida_investigations`, `ida_agent_runs`,
+`ida_tool_events`, `ida_clinical_summaries`, `ida_approval_decisions`, and
+`ida_followup_tasks`. They keep UUIDs, synthetic patient/result tokens, UTC
+timestamps, configured model name, an agent configuration fingerprint, tool names,
+call IDs, completion status/counts, one structured summary, the reviewer decision,
+and the approved action. The fingerprint covers instructions, output schema,
+allowed tools, SDK version, turn limit, and model options; the model name is stored
+separately. API keys, connection strings, raw tool arguments/results, and complete
+FHIR resources are not stored. The summary retains its selected clinical facts.
+
+Run and tool starts are committed before further execution. Failed runs retain
+sanitized exception class names and any completed tool events; unfinished tool
+calls are marked `interrupted` when the application handles a failure. A hard
+process crash can leave `running` records for inspection; no automatic recovery
+worker is added. Configuration fields remain null if configuration never validates.
+Detailed model/tool payloads remain available through the existing SDK traces,
+linked by `agent_run.trace_id`; this database audit is not a custom trace system.
+
+The agent may populate `summary.proposed_action` with a `create_followup_task`
+proposal containing `title` and `description`. It has no execution tool. A summary
+with no proposal may still be reviewed and approved without creating a task.
+Only an explicit approval transaction can create the local simulated task.
+
+```sh
+curl http://127.0.0.1:8000/investigations/pending-review
+curl -X POST "http://127.0.0.1:8000/investigations/<investigation_id>/approve" \
+  -H 'Content-Type: application/json' -d '{"note":"Reviewed synthetic case."}'
+curl -X POST "http://127.0.0.1:8000/investigations/<investigation_id>/reject" \
+  -H 'Content-Type: application/json' -d '{"note":"Insufficient synthetic context."}'
+```
+
+Approve and reject are alternatives. Rejection records the reason and creates no
+task. Approving with `modified_action` records decision `modified` and executes
+that exact approved version; the original summary/proposal stays unchanged:
+
+```json
+{
+  "note": "Refined the synthetic follow-up question.",
+  "modified_action": {
+    "kind": "create_followup_task",
+    "title": "Clarify specimen context",
+    "description": "Reviewer requests synthetic collection details."
+  }
+}
+```
+
+Review endpoints resolve `CurrentUser` through the separate `get_current_user`
+dependency. `IDA_CURRENT_USER_ID=REVIEWER_001` is a server-configured local demo
+identity, **not authentication** or proof of a human's identity. Request bodies and
+headers cannot select a different reviewer. Replace this dependency with real
+authentication/authorization in a later milestone; no hospital auth is implemented.
+
+A row lock serializes decisions for an investigation. The decision, simulated
+task insertion, and terminal status update commit in one transaction. Unique
+constraints permit one decision/task per investigation, and a database trigger
+rejects task insertion unless its fields match a recorded approved/modified action.
+An identical retry by the same reviewer returns the original task and decision;
+a different decision or payload returns 409. This guarantee covers the simulated
+database task, not an external hospital side effect.
+
+With FHIR/API running and OpenAI configured, this example creates an investigation,
+checks pending review, and explicitly approves a follow-up task. If the agent
+proposes none, the reviewer supplies the modified action shown here:
+
+```sh
+curl --fail-with-body -sS -X POST http://127.0.0.1:8000/investigations \
+  -H 'Content-Type: application/json' \
+  -d '{"patient_id":"PATIENT_001","microbiology_result_id":"MICRO_001_RECENT"}' \
+  > /tmp/investigation.json
+python -m json.tool /tmp/investigation.json
+INVESTIGATION_ID=$(python -c 'import json; print(json.load(open("/tmp/investigation.json"))["investigation_id"])')
+curl --fail-with-body -sS http://127.0.0.1:8000/investigations/pending-review
+curl --fail-with-body -sS -X POST "http://127.0.0.1:8000/investigations/$INVESTIGATION_ID/approve" \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"Reviewed synthetic case.","modified_action":{"kind":"create_followup_task","title":"Review synthetic microbiology","description":"Review missing symptom and specimen context."}}'
+```
+
+The first response has a summary and `awaiting_review`. The last response has
+`status: "approved"`, an approval ID/reviewer/timestamp, and a `followup_task`
+with its own ID, `simulated: true`, and the matching approval ID. No patient record,
+clinical order, medication, or external system is changed.
+
+Unit tests remain offline using a test-only store double. Production always uses
+PostgreSQL. For real transactions and concurrent approval checks, export the
+separate disposable `IDA_TEST_DATABASE_URL` described above and run:
+
+```sh
+python -m pytest -m integration tests/integration -q
+```
 
 ## Architecture and scope
 
@@ -388,11 +495,11 @@ neither a running FHIR service nor live model access.
 
 The application boundary receives synthetic lab notifications through FastAPI
 and coordinates controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RAG,
-and produces a structured summary for clinician review. Human approval and
-simulated downstream actions remain planned.
+and produces a structured summary for clinician review. Human review gates the creation of a simulated follow-up task.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
 The current implementation includes local synthetic FHIR retrieval, PostgreSQL/
 pgvector RAG, one agent with structured output and SDK tracing, and a FastAPI
-application boundary. Authentication, multiple agents, a frontend, and
-approval/action execution remain future work.
+application boundary with persistent workflow audit and human approval.
+Authentication, multiple agents, a frontend, and real downstream integrations
+remain future work.

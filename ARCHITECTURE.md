@@ -4,7 +4,8 @@ All patient and lab data must be synthetic. The following flow is a long-term
 design. The current implementation covers typed synthetic data, deterministic
 Python retrieval through a local synthetic FHIR API, and a single coordinator
 agent invoked from a CLI or FastAPI application service, plus optional
-PostgreSQL/pgvector guideline retrieval.
+PostgreSQL/pgvector guideline retrieval and persistent human review before any
+simulated follow-up task.
 
 ```mermaid
 flowchart TD
@@ -29,8 +30,13 @@ approve a proposed action before a simulated downstream action can occur.
 - `config.py`: environment-based Pydantic settings.
 - `models/patient.py`: typed clinical domain objects and patient context/summaries.
 - `models/investigation.py`: framework-independent investigation requests/responses and API error schemas.
-- `services/investigations.py`: event validation, coordinator orchestration, and bounded completed-result history.
-- `api.py`: thin FastAPI routes, application-service dependency, HTTP error handling, and lifespan.
+- `services/investigations.py`: event validation, coordinator orchestration, and persistent review workflow.
+- `api.py`: thin FastAPI investigation/review routes, HTTP errors, and lifespan.
+- `current_user.py`: explicit local demo identity dependency; replace with authentication later.
+- `models/workflow.py`: typed actions, reviewer decisions, run records, and tool events.
+- `workflow/database.py` and `workflow/sql/`: durable PostgreSQL state, versioned migrations, and review transactions.
+- `workflow/audit.py`: high-level per-run audit collection; SDK tracing remains unchanged.
+- `workflow/actions.py`: approval-gated simulated follow-up task insertion.
 - `models/clinical_summary.py`: structured agent output, record references, and disclaimer.
 - `fhir/client.py`: `httpx` transport, reads/searches, envelope checks, and reference retrieval.
 - `fhir/models.py`: Pydantic models for the supported FHIR R4 resource subset.
@@ -95,10 +101,10 @@ standard SDK trace with native model and function spans, plus a supported SDK cu
 validated output. Detailed trace payloads and response storage are enabled for
 synthetic development data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
-payloads. PostgreSQL persists only guideline metadata, chunks, and embeddings;
-patient data and agent sessions are not stored there. Multiple agents,
-a frontend, authentication, and an approval/action workflow remain future work. This milestone presents information for review without
-implementing an approval mechanism or simulated downstream action.
+payloads. PostgreSQL persists guideline vectors and the application workflow audit.
+Only selected summary facts are retained, not complete FHIR resources. Human
+approval gates simulated follow-up task creation; authentication, multiple agents,
+a frontend, and real downstream integrations remain future work.
 
 ## FHIR scope
 
@@ -168,53 +174,75 @@ Unit tests mock HTTP, embeddings, and PostgreSQL connections. Opt-in integration
 tests use a real PostgreSQL/pgvector database in isolated temporary schemas, with
 deterministic test vectors. No live model or embedding API is required for tests.
 
-## FastAPI boundary and investigation lifecycle
+## FastAPI boundary, persistence, and human review
 
 ```mermaid
 flowchart TD
-    HTTP["POST /investigations: synthetic patient + result IDs"] --> Validation["FastAPI / Pydantic validation"]
-    Validation --> App["InvestigationService"]
-    App --> Event["FHIR check: patient exists and owns result"]
-    Event --> Agent["Existing single coordinator"]
-    Agent --> Tools["Patient tools and optional guideline tool"]
-    Tools --> Context["Synthetic FHIR API / PostgreSQL pgvector RAG"]
-    Context --> Agent
-    Agent --> Summary["ClinicalSummary with evidence validation"]
-    Summary --> Consistency["Application event/summary consistency check"]
-    Consistency --> History["Bounded process-local completed history"]
-    History --> Created["201 response + UUID + Location"]
-    GET["GET /investigations/UUID"] --> History
+    HTTP["POST /investigations: synthetic patient + event IDs"] --> Validation["Pydantic + FHIR event validation"]
+    Validation --> Start["Persist investigation + agent run: running"]
+    Start --> Agent["Single coordinator: FHIR/RAG tools"]
+    Agent --> Audit["Persist high-level tool starts/completions"]
+    Agent --> Summary["Validated ClinicalSummary + optional task proposal"]
+    Summary --> Pending["Persist summary: awaiting_review"]
+    Pending --> Reviewer["CurrentUser dependency + explicit reviewer endpoint"]
+    Reviewer --> Reject["Reject: decision recorded, no action"]
+    Reviewer --> Approve["Approve or modify: exact action recorded"]
+    Approve --> Transaction["One PostgreSQL transaction with investigation row lock"]
+    Transaction --> Task["Create simulated follow-up task once"]
+    Task --> Approved["Commit approved status + decision + task"]
 ```
 
-The API accepts only synthetic patient/result business identifiers, with extra
-fields rejected. The application service checks result ownership before the
-model runs, passes the selected result to the existing coordinator, and checks
-the returned patient/result metadata against FHIR before recording completion.
-The agent's evidence validation matches the specifically requested result;
-existing CLI calls without an event ID continue to select the newest culture.
-Neither the agent nor the application service imports FastAPI.
+API routes translate HTTP only; application services own event validation and
+review orchestration. Patient/result ownership is checked before the coordinator
+runs. Named historical results must match the generated summary. The independent
+CLI still selects the newest culture by default, prints proposals without
+executing them, and needs no workflow database.
 
-POST awaits a completed summary, then returns 201 with a retrieval URL. GET
-returns that response from process-local memory. History retains the latest 100
-completions per service instance, returns independent copies, and disappears on
-restart or eviction. Only successful investigations are stored. It is intentionally
-single-process state; PostgreSQL remains dedicated to guideline metadata, chunks,
-and embeddings. No task queue or durable investigation/session schema is added.
+Workflow tables have a separate checksummed migration ledger from guideline RAG.
+They store investigations, one agent-run attempt per investigation, tool events,
+one generated summary, a reviewer decision, and an optional simulated follow-up
+task. PostgreSQL replaces the former process-local cache; new API instances read
+the same durable records. No connection or transaction is held open across an LLM
+call. Audit starts, configuration, and tool progress commit during execution.
+Failures record safe exception class names and interrupted tool calls without
+storing argument/result payloads or complete FHIR resources. A process crash can
+leave a running record; automatic recovery/retries remain unimplemented.
 
-The investigation router contains HTTP translation only. A dependency resolves the
-application service from app state and provides a boundary for future router-level
-authentication. No authentication or frontend is implemented. The documented
-Uvicorn command binds only to loopback. Health is liveness only and requires no
-OpenAI credentials or running FHIR/database service.
+Each run stores its model name, SDK trace ID, timestamps, and a SHA-256 fingerprint
+of instructions, structured schema, tools, SDK version, turn limit, and model
+options. The database audit supplements native SDK tracing, not replaces it.
+API keys and database credentials never enter audit records or HTTP errors.
 
-Unknown patient, patient-scoped result, and investigation IDs return 404. Invalid
-requests return 422 without echoing raw values. Invalid coordinator summaries
-return 502, unavailable dependencies/configuration return 503, and unexpected
-failures return a generic 500. HTTP errors never expose SDK exception text, API
-keys, or connection URLs. Standard SDK traces are preserved and flushed during
-application shutdown; high-level logs omit clinical payloads and exception text.
+`POST /investigations` waits for a persisted summary, then returns 201 with
+`awaiting_review` and a retrieval URL. `GET /investigations/{id}` returns summary,
+run/tool audits, decision, and task, including failed/running states when present.
+`GET /investigations/pending-review` lists awaiting records in creation order.
+Approval and rejection endpoints use the replaceable `CurrentUser` dependency;
+its server-configured synthetic reviewer token is a demo placeholder, not real
+authentication. No caller-supplied header or body field serves as identity.
 
-Tests cover the application service independently, FastAPI validation and typed
-responses, error sanitization, cache retrieval/eviction, and the actual HTTP-to-SDK
-tool path using mocked FHIR HTTP and model responses. The standalone CLI remains
-a separate entry point and requires no running FastAPI application.
+The agent can propose only a typed `create_followup_task` in its final summary;
+the SDK exposes no action execution tool. Approve/reject paths lock the
+investigation row. The transaction records the decision first, inserts the exact
+approved action as a simulated database task when present, and updates status.
+A modified decision preserves the original summary/proposal and stores the
+reviewer's replacement action. Rejection never creates a task. Reviewing a
+summary with no proposed action may approve it without executing anything.
+
+One decision and one task per investigation are enforced with unique constraints.
+Task insertion additionally requires a matching approved/modified action through
+a database trigger. Identical approval retries return the existing result;
+conflicting decisions return 409. If task creation fails, the decision and status
+change roll back too. This atomic guarantee applies to the local database
+simulation, with no external side effects or hospital writes.
+
+Health is liveness only. Invalid requests return 422; unknown records return 404;
+review conflicts return 409; invalid agent output returns 502; unavailable
+configuration/dependencies return 503; unexpected errors return a generic 500.
+The documented Uvicorn command binds to loopback. The API flushes standard SDK
+traces on shutdown. There is no frontend or real hospital authentication.
+
+Offline tests use a test-only store double. Opt-in PostgreSQL tests exercise
+restart/request persistence, actual SDK run audits with a mocked model,
+approval/rejection/modification, concurrent decision races, duplicate suppression,
+pre-approval action denial, database constraints, and rollback.
