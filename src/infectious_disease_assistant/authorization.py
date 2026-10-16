@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -28,7 +29,7 @@ def access_user() -> CurrentUser:
 
 
 @contextmanager
-def authorization_scope(user: CurrentUser):
+def authorization_scope(user: CurrentUser) -> Iterator[None]:
     token = _principal.set(user)
     try:
         yield

@@ -1,10 +1,11 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import TypeVar
 
 from pydantic import BaseModel
 
-from infectious_disease_assistant.authorization import InvalidPatientIdError, authorize_patient
+from infectious_disease_assistant.authorization import InvalidPatientIdError as InvalidPatientIdError, authorize_patient
 
 from infectious_disease_assistant.fhir import models as fhir
 from infectious_disease_assistant.fhir import parsing
@@ -25,7 +26,7 @@ class PatientNotFoundError(LookupError):
 
 
 @contextmanager
-def _patient_client(patient_id: str):
+def _patient_client(patient_id: str) -> Iterator[tuple[FhirClient, fhir.Patient, date]]:
     validated_id = authorize_patient(patient_id)
     with FhirClient() as client:
         matches = client.search("Patient", {"identifier": f"{PATIENT_IDENTIFIER_SYSTEM}|{validated_id}"})

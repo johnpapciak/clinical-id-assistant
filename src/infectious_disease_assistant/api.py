@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
@@ -17,7 +18,7 @@ from infectious_disease_assistant.workflow.errors import ReviewConflictError
 from infectious_disease_assistant.models.investigation import (
     ErrorResponse, HealthResponse, InvestigationRequest, InvestigationResponse, ValidationIssue,
 )
-from infectious_disease_assistant.observability import LOGGER, configure_logging
+from infectious_disease_assistant.event_logging import LOGGER, configure_logging
 from infectious_disease_assistant.services.investigations import (
     InvestigationError, InvestigationNotFoundError, InvestigationService,
     InvestigationSummaryError, InvestigationUnavailableError, MicrobiologyResultNotFoundError,
@@ -26,7 +27,7 @@ from infectious_disease_assistant.services.patients import PatientNotFoundError
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(Settings().log_level)
     try:
         yield
@@ -38,7 +39,7 @@ def get_investigation_service(request: Request) -> InvestigationService:
     return request.app.state.investigations
 
 
-async def patient_access_scope(user: Annotated[CurrentUser, Depends(get_current_user)]):
+async def patient_access_scope(user: Annotated[CurrentUser, Depends(get_current_user)]) -> AsyncIterator[None]:
     with authorization_scope(user):
         yield
 

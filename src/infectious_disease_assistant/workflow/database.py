@@ -1,6 +1,5 @@
-import hashlib
+from collections.abc import Iterator
 from contextlib import contextmanager
-from importlib.resources import files
 from uuid import UUID, uuid4
 
 import psycopg
@@ -8,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from infectious_disease_assistant.database import DatabaseConnection, MigrationChangedError, apply_migrations
 from infectious_disease_assistant.config import DatabaseSettings
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
 from infectious_disease_assistant.models.investigation import InvestigationRequest, InvestigationResponse
@@ -22,7 +22,7 @@ class WorkflowStore:
         self.settings = settings
 
     @contextmanager
-    def connection(self):
+    def connection(self) -> Iterator[DatabaseConnection]:
         try:
             settings = self.settings if self.settings is not None else DatabaseSettings()
             with psycopg.connect(settings.database_url.get_secret_value(), connect_timeout=5, row_factory=dict_row) as connection:
@@ -31,26 +31,14 @@ class WorkflowStore:
             raise WorkflowDatabaseError("Workflow database unavailable; check DATABASE_URL and run workflow init") from None
 
     def initialize(self) -> None:
-        with self.connection() as connection:
-            connection.execute("SELECT pg_advisory_xact_lock(817214603)")
-            connection.execute("""CREATE TABLE IF NOT EXISTS ida_workflow_migrations (
-                version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
-            )""")
-            migrations = files("infectious_disease_assistant.workflow").joinpath("sql")
-            for migration in sorted(migrations.iterdir(), key=lambda item: item.name):
-                if not migration.name.endswith(".sql"):
-                    continue
-                sql = migration.read_text(encoding="utf-8")
-                checksum = hashlib.sha256(sql.encode()).hexdigest()
-                previous = connection.execute("SELECT checksum FROM ida_workflow_migrations WHERE version = %s", (migration.name,)).fetchone()
-                if previous:
-                    if previous["checksum"] != checksum:
-                        raise WorkflowDatabaseError("An applied workflow migration has changed")
-                    continue
-                connection.execute(sql)
-                connection.execute("INSERT INTO ida_workflow_migrations (version, checksum) VALUES (%s, %s)", (migration.name, checksum))
+        try:
+            with self.connection() as connection:
+                apply_migrations(connection, package="infectious_disease_assistant.workflow",
+                                 ledger="ida_workflow_migrations", lock_id=817214603)
+        except MigrationChangedError:
+            raise WorkflowDatabaseError("An applied workflow migration has changed") from None
 
-    def _load(self, connection, investigation_id: UUID) -> InvestigationResponse:
+    def _load(self, connection: DatabaseConnection, investigation_id: UUID) -> InvestigationResponse:
         row = connection.execute("""
             SELECT i.*, s.summary_id, s.content AS summary,
                    to_jsonb(r) - 'investigation_id' AS agent_run,
@@ -102,7 +90,7 @@ class WorkflowStore:
                 VALUES (%s, %s, %s, 'running', %s)""", (run.agent_run_id, investigation_id, run.trace_id, run.started_at))
         return investigation_id
 
-    def _save_audit(self, connection, run: AgentRunRecord, events: list[ToolEvent]) -> None:
+    def _save_audit(self, connection: DatabaseConnection, run: AgentRunRecord, events: list[ToolEvent]) -> None:
         connection.execute("""UPDATE ida_agent_runs SET status = %s, completed_at = %s,
             model_name = %s, configuration_version = %s, error_type = %s WHERE agent_run_id = %s""",
             (run.status, run.completed_at, run.model_name, run.configuration_version, run.error_type, run.agent_run_id))

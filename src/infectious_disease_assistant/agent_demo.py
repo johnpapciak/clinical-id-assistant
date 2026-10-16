@@ -13,7 +13,7 @@ from infectious_disease_assistant.agent import AgentDemoError, investigate_patie
 from infectious_disease_assistant.config import Settings
 from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
-from infectious_disease_assistant.observability import configure_logging
+from infectious_disease_assistant.event_logging import configure_logging
 from infectious_disease_assistant.services.patients import InvalidPatientIdError, PatientNotFoundError
 from infectious_disease_assistant.services.summary_validation import SummaryEvidenceError
 

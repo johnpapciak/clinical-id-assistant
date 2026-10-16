@@ -1,17 +1,12 @@
-import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
-import psycopg
 import pytest
 from fastapi.testclient import TestClient
-from psycopg import sql
 
 from infectious_disease_assistant.api import create_app
 from infectious_disease_assistant.guardrails import SAFE_FOLLOWUP
-from infectious_disease_assistant.config import DatabaseSettings
 from infectious_disease_assistant.models.investigation import InvestigationRequest
 from infectious_disease_assistant.models.workflow import AgentRunRecord, CurrentUser, FollowupAction
 from infectious_disease_assistant.workflow.actions import create_followup_task
@@ -20,28 +15,6 @@ from infectious_disease_assistant.workflow.database import WorkflowStore
 from infectious_disease_assistant.workflow.errors import ActionNotApprovedError, ReviewConflictError, WorkflowDatabaseError
 
 pytestmark=pytest.mark.integration
-
-
-@pytest.fixture
-def workflow_settings():
-    url=os.environ.get('IDA_TEST_DATABASE_URL')
-    if not url:
-        pytest.skip('Set IDA_TEST_DATABASE_URL to a disposable PostgreSQL database')
-    schema='ida_workflow_test_'+uuid4().hex
-    with psycopg.connect(url,autocommit=True) as connection:
-        connection.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
-        connection.execute(sql.SQL('''CREATE TABLE {}.ida_workflow_migrations (
-            version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())''').format(sql.Identifier(schema)))
-    parts=urlsplit(url)
-    query=[(key,value) for key,value in parse_qsl(parts.query) if key!='options']
-    query.append(('options',f'-csearch_path={schema},public'))
-    settings=DatabaseSettings(_env_file=None,DATABASE_URL=urlunsplit(parts._replace(query=urlencode(query))))
-    try:
-        WorkflowStore(settings).initialize()
-        yield settings
-    finally:
-        with psycopg.connect(url,autocommit=True) as connection:
-            connection.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
 
 
 @pytest.fixture

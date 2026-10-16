@@ -1,13 +1,12 @@
-import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from importlib.resources import files
 
 import psycopg
 from psycopg.rows import dict_row
 
+from infectious_disease_assistant.database import DatabaseConnection, MigrationChangedError, apply_migrations
 from infectious_disease_assistant.config import RagSettings
 from infectious_disease_assistant.rag.embeddings import validate_embeddings
 from infectious_disease_assistant.rag.errors import GuidelineDatabaseError
@@ -26,7 +25,7 @@ class GuidelineStore:
         self.database_url = settings.database_url
 
     @contextmanager
-    def connection(self) -> Iterator[psycopg.Connection]:
+    def connection(self) -> Iterator[DatabaseConnection]:
         try:
             with psycopg.connect(
                 self.database_url.get_secret_value(), connect_timeout=5, row_factory=dict_row,
@@ -38,31 +37,12 @@ class GuidelineStore:
             ) from None
 
     def initialize(self) -> None:
-        with self.connection() as connection:
-            connection.execute("SELECT pg_advisory_xact_lock(817214602)")
-            connection.execute("""
-                CREATE TABLE IF NOT EXISTS ida_guideline_migrations (
-                    version text PRIMARY KEY, checksum text NOT NULL,
-                    applied_at timestamptz NOT NULL DEFAULT now()
-                )
-            """)
-            for migration in sorted(files("infectious_disease_assistant.rag").joinpath("sql").iterdir(), key=lambda item: item.name):
-                if not migration.name.endswith(".sql"):
-                    continue
-                sql = migration.read_text(encoding="utf-8")
-                checksum = hashlib.sha256(sql.encode()).hexdigest()
-                row = connection.execute(
-                    "SELECT checksum FROM ida_guideline_migrations WHERE version = %s", (migration.name,),
-                ).fetchone()
-                if row:
-                    if row["checksum"] != checksum:
-                        raise GuidelineDatabaseError("An applied guideline migration has changed")
-                    continue
-                connection.execute(sql)
-                connection.execute(
-                    "INSERT INTO ida_guideline_migrations (version, checksum) VALUES (%s, %s)",
-                    (migration.name, checksum),
-                )
+        try:
+            with self.connection() as connection:
+                apply_migrations(connection, package="infectious_disease_assistant.rag",
+                                 ledger="ida_guideline_migrations", lock_id=817214602)
+        except MigrationChangedError:
+            raise GuidelineDatabaseError("An applied guideline migration has changed") from None
 
     def replace_documents(self, documents: list[PreparedDocument], model: str, dimensions: int) -> None:
         for prepared in documents:

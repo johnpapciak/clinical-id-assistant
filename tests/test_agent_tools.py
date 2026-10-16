@@ -2,6 +2,7 @@ import asyncio
 import json
 import httpx
 from datetime import date
+from threading import Event
 
 import pytest
 from agents import FunctionTool
@@ -74,3 +75,28 @@ def test_data_failure_propagates(fhir_api):
 def test_invalid_json_is_rejected():
     with pytest.raises(ModelBehaviorError):
         invoke(PATIENT_TOOLS[0], arguments="not JSON")
+
+
+def test_patient_lookup_does_not_block_other_async_work(monkeypatch):
+    release = Event()
+
+    def slow_lookup(patient_id):
+        assert release.wait(timeout=2), "The patient lookup blocked the event loop"
+        return []
+
+    monkeypatch.setattr(patients, "get_medications", slow_lookup)
+    tool = PATIENT_TOOLS[0]
+
+    async def run():
+        context = ToolContext(
+            context=PatientContext("PATIENT_001", date(2026, 10, 15)),
+            tool_name=tool.name, tool_call_id="test-call", tool_arguments="{}",
+        )
+
+        async def other_work():
+            release.set()
+
+        result, _ = await asyncio.gather(tool.on_invoke_tool(context, "{}"), other_work())
+        return result
+
+    assert json.loads(asyncio.run(run()))["records"] == []

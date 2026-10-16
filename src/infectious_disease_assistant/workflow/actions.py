@@ -1,11 +1,12 @@
 from uuid import UUID, uuid4
 
+from infectious_disease_assistant.database import DatabaseConnection
 from infectious_disease_assistant.models.workflow import FollowupTask
 from infectious_disease_assistant.workflow.audit import utc_now
 from infectious_disease_assistant.workflow.errors import ActionNotApprovedError
 
 
-def create_followup_task(connection, approval_id: UUID) -> FollowupTask:
+def create_followup_task(connection: DatabaseConnection, approval_id: UUID) -> FollowupTask:
     approval = connection.execute("""
         SELECT a.*, i.patient_id FROM ida_approval_decisions a
         JOIN ida_investigations i USING (investigation_id)

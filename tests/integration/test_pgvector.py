@@ -1,49 +1,11 @@
-import os
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-from uuid import uuid4
 
-import psycopg
 import pytest
-from psycopg import sql
 
-from infectious_disease_assistant.config import RagSettings
 from infectious_disease_assistant.rag.database import GuidelineStore, PreparedDocument
 from infectious_disease_assistant.rag.errors import GuidelineDatabaseError
 from infectious_disease_assistant.rag.service import ingest_guidelines, search_guidelines
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def postgres_settings(rag_settings):
-    database_url = os.environ.get("IDA_TEST_DATABASE_URL")
-    if not database_url:
-        pytest.skip("Set IDA_TEST_DATABASE_URL to a disposable PostgreSQL/pgvector database")
-    schema = "ida_rag_test_" + uuid4().hex
-    with psycopg.connect(database_url, autocommit=True) as connection:
-        connection.execute("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public")
-        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
-        # Prevent migration lookup from falling through to an initialized public schema.
-        connection.execute(sql.SQL("""
-            CREATE TABLE {}.ida_guideline_migrations (
-                version text PRIMARY KEY, checksum text NOT NULL,
-                applied_at timestamptz NOT NULL DEFAULT now()
-            )
-        """).format(sql.Identifier(schema)))
-    parts = urlsplit(database_url)
-    query = [(key, value) for key, value in parse_qsl(parts.query) if key != "options"]
-    query.append(("options", f"-csearch_path={schema},public"))
-    scoped_url = urlunsplit(parts._replace(query=urlencode(query)))
-    settings = RagSettings(
-        _env_file=None, DATABASE_URL=scoped_url, OPENAI_EMBEDDING_MODEL="test-embedding",
-        embedding_dimensions=3, data_dir=rag_settings.data_dir, chunk_words=40, chunk_overlap=5,
-    )
-    try:
-        GuidelineStore(settings).initialize()
-        yield settings
-    finally:
-        with psycopg.connect(database_url, autocommit=True) as connection:
-            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
 
 
 def test_real_pgvector_ingestion_persistence_and_retrieval(postgres_settings, test_embedder):

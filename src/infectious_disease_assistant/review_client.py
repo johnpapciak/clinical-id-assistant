@@ -2,7 +2,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
-from pydantic import Field, TypeAdapter, ValidationError, field_validator
+from pydantic import Field, JsonValue, TypeAdapter, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from infectious_disease_assistant.models.investigation import InvestigationRequest, InvestigationResponse
@@ -53,10 +53,10 @@ class ReviewClient:
     def __enter__(self) -> "ReviewClient":
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_) -> None:
         self.client.close()
 
-    def _request(self, method: str, path: str, body=None):
+    def _request(self, method: str, path: str, body: dict[str, JsonValue] | None = None) -> JsonValue:
         try:
             response = self.client.request(method, path, json=body)
         except httpx.TimeoutException:
@@ -73,7 +73,7 @@ class ReviewClient:
         except ValueError:
             raise ReviewAPIError("The backend returned an invalid response.") from None
 
-    def _investigation(self, method: str, path: str, body=None) -> InvestigationResponse:
+    def _investigation(self, method: str, path: str, body: dict[str, JsonValue] | None = None) -> InvestigationResponse:
         payload = self._request(method, path, body)
         try:
             return InvestigationResponse.model_validate(payload)

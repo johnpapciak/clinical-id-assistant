@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import httpx
-from agents.tracing import TracingProcessor, set_trace_processors
+from agents.tracing import TracingProcessor, set_trace_processors, set_tracing_disabled
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -50,7 +50,9 @@ def restore_application_logger():
 def sdk_traces():
     processor = CapturingTraceProcessor()
     set_trace_processors([processor])
+    set_tracing_disabled(False)
     yield processor
+    set_tracing_disabled(True)
     set_trace_processors([])
 
 

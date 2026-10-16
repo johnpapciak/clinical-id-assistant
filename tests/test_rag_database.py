@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import psycopg
 import pytest
+from psycopg.sql import Composable
 
 from infectious_disease_assistant.rag.database import GuidelineStore, PreparedDocument
 from infectious_disease_assistant.rag.errors import EmbeddingError, GuidelineDatabaseError
@@ -63,19 +64,21 @@ def test_search_uses_pgvector_cosine_and_embedding_profile(rag_settings, guideli
 def test_initialize_applies_bundled_migration(rag_settings, database_connection):
     database_connection.execute.return_value.fetchone.return_value = None
     GuidelineStore(rag_settings).initialize()
-    sql_calls = [call.args[0] for call in database_connection.execute.call_args_list]
+    sql_calls = [query.as_string() if isinstance(query, Composable) else query
+                 for call in database_connection.execute.call_args_list for query in [call.args[0]]]
     migration = next(sql for sql in sql_calls if "CREATE EXTENSION" in sql)
     assert "CREATE TABLE ida_guideline_documents" in migration
     assert "embedding vector NOT NULL" in migration
     assert "CREATE TABLE ida_guideline_chunks" in migration
-    assert any("INSERT INTO ida_guideline_migrations" in sql for sql in sql_calls)
+    assert any("INSERT INTO \"ida_guideline_migrations\"" in sql for sql in sql_calls)
 
 
 def test_initialize_skips_applied_migration(rag_settings, database_connection):
     sql = files("infectious_disease_assistant.rag").joinpath("sql/001_guidelines.sql").read_text()
     database_connection.execute.return_value.fetchone.return_value = {"checksum": hashlib.sha256(sql.encode()).hexdigest()}
     GuidelineStore(rag_settings).initialize()
-    assert not any("CREATE EXTENSION" in call.args[0] for call in database_connection.execute.call_args_list)
+    assert not any(isinstance(call.args[0], str) and "CREATE EXTENSION" in call.args[0]
+                   for call in database_connection.execute.call_args_list)
 
 
 def test_changed_migration_is_rejected(rag_settings, database_connection):
