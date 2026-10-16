@@ -1,0 +1,23 @@
+[
+  {
+    "document_id": "synthetic-urine-culture-review-v1",
+    "title": "Synthetic urine culture review checklist (demo v1)",
+    "source": "Project-authored synthetic guideline; data/guidelines/urine-culture.md",
+    "license": "CC0-1.0",
+    "path": "urine-culture.md"
+  },
+  {
+    "document_id": "synthetic-medication-context-v1",
+    "title": "Synthetic medication and allergy context checklist (demo v1)",
+    "source": "Project-authored synthetic guideline; data/guidelines/medication-context.md",
+    "license": "CC0-1.0",
+    "path": "medication-context.md"
+  },
+  {
+    "document_id": "synthetic-renal-context-v1",
+    "title": "Synthetic renal laboratory context checklist (demo v1)",
+    "source": "Project-authored synthetic guideline; data/guidelines/renal-context.md",
+    "license": "CC0-1.0",
+    "path": "renal-context.md"
+  }
+]

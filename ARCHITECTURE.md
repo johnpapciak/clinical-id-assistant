@@ -3,7 +3,7 @@
 All patient and lab data must be synthetic. The following flow is a long-term
 design. The current implementation covers typed synthetic data, deterministic
 Python retrieval through a local synthetic FHIR API, and a single coordinator
-agent invoked from a CLI.
+agent invoked from a CLI, plus optional PostgreSQL/pgvector guideline retrieval.
 
 ```mermaid
 flowchart TD
@@ -39,6 +39,14 @@ approve a proposed action before a simulated downstream action can occur.
 - `agent.py`: one coordinator, safety instructions, model configuration, and SDK invocation.
 - `agent_demo.py`: agent CLI with JSON output and SDK trace flushing.
 - `observability.py`: high-level JSON event logging and SDK run hooks.
+- `rag/models.py`: typed documents, chunks, search matches, and source citations.
+- `rag/documents.py`: local Markdown extraction, whitespace cleanup, and section-aware word chunks.
+- `rag/embeddings.py`: configurable OpenAI embeddings and vector validation; no agent dependency.
+- `rag/database.py` and `rag/sql/`: parameterized PostgreSQL storage/search and numbered migrations.
+- `rag/service.py`: ingestion and retrieval orchestration, independent of the agent SDK.
+- `tools/guideline_tools.py`: optional read-only RAG tool with cumulative evidence records.
+- `compose.yaml`: loopback-only PostgreSQL with pgvector and a persistent volume.
+- `data/guidelines/`: CC0 project-authored synthetic review checklists and provenance manifest.
 - `data/fhir/bundle.json`: canonical synthetic R4 resources for five patients.
 - `tests/`: deterministic tests plus mocked agent, tool, configuration, and CLI tests.
 
@@ -76,15 +84,16 @@ Finding references must point to existing returned records. Free-text meaning
 and clinical appropriateness still need human verification. No prescribing,
 record mutation, or downstream action capability is exposed.
 
-Only the agent demo makes OpenAI API calls. It uses a standard SDK trace with
-native model and function spans, plus a supported SDK custom span containing the
+The agent demo makes model calls; guideline ingestion and search also make
+OpenAI embedding calls. FHIR retrieval remains deterministic and independent. The agent demo uses a
+standard SDK trace with native model and function spans, plus a supported SDK custom span containing the
 validated output. Detailed trace payloads and response storage are enabled for
 synthetic development data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
-payloads. No application database or persistent session is added. PostgreSQL, RAG,
-FastAPI, multiple agents, a frontend, and an approval/action workflow remain
-future work. This milestone presents information for review without implementing
-an approval mechanism or simulated downstream action.
+payloads. PostgreSQL persists only guideline metadata, chunks, and embeddings;
+patient data and agent sessions are not stored there. FastAPI, multiple agents,
+a frontend, and an approval/action workflow remain future work. This milestone presents information for review without
+implementing an approval mechanism or simulated downstream action.
 
 ## FHIR scope
 
@@ -104,3 +113,52 @@ Explicit infection-history Conditions are distinct from ordinary diagnoses and
 carry documented local extensions for the recorded organism and prior treatment.
 No infection is inferred from culture growth. See `data/README.md` for local codes
 and the supported mapping limitations.
+
+## Guideline ingestion and retrieval
+
+```mermaid
+flowchart TD
+    Manifest["Synthetic Markdown + source manifest"] --> Extract["Extract and clean text"]
+    Extract --> Chunks["Configurable section/word chunks"]
+    Chunks --> Embed["OpenAI embeddings"]
+    Embed --> DB["PostgreSQL: documents, chunks, pgvector vectors"]
+    Agent["Single coordinator"] --> Tool["Optional search_guidelines tool"]
+    Tool --> Service["Retrieval service: validate query"]
+    Service --> Query["Query embedding"]
+    Query --> DB
+    DB --> Results["Exact cosine search: text, metadata, distance"]
+    Results --> Tool
+    Tool --> Agent
+    Agent --> Summary["ClinicalSummary + checked guideline citations"]
+    Summary --> Review["Human clinician review"]
+```
+
+The existing FHIR path supplies patient facts. The RAG path supplies general
+synthetic checklist context; it never substitutes for patient evidence. Search
+is optional and has no patient-ID parameter. Instructions ask for topic-only
+queries and forbid treating retrieved text as instructions or treatment authority.
+
+The manifest preserves document provenance and usage rights. Ingestion adds a
+content hash, section, global per-document chunk index, and deterministic chunk
+ID. Embeddings are created before database mutation. A single transaction upserts
+all listed document metadata and replaces their chunks; failures roll back the
+batch. Re-ingestion switches a document to the selected embedding profile.
+Documents omitted from a later manifest remain stored until explicitly removed.
+
+Bundled numbered SQL migrations initialize pgvector and tables, track checksums,
+and run under an advisory transaction lock. A dimensionless pgvector column with
+per-row dimensional checks permits configurable dimensions. Queries filter both
+model and dimensions before comparing vectors. Exact cosine search is appropriate
+for this tiny corpus; no approximate index or additional vector service is used.
+PostgreSQL is the only guideline persistence store.
+
+The tool returns text and provenance plus cosine distance and similarity. Repeated
+searches accumulate unique chunk records with stable evidence indices. The final
+schema carries used guideline citations. Python rejects fabricated metadata,
+uncalled sources, out-of-range evidence, missing citations for guideline-backed
+findings, and unused citations. Textual entailment and clinical relevance remain
+human review responsibilities. A ranking score is not a confidence estimate.
+
+Unit tests mock HTTP, embeddings, and PostgreSQL connections. Opt-in integration
+tests use a real PostgreSQL/pgvector database in isolated temporary schemas, with
+deterministic test vectors. No live model or embedding API is required for tests.

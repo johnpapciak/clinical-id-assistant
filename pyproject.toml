@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "infectious-disease-assistant"
 version = "0.1.0"
-description = "Educational infectious-disease workflow using synthetic patient data"
+description = "Infectious-disease workflow demo using synthetic patient data"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28,<0.29",
     "openai-agents>=0.24,<0.25",
+    "psycopg[binary]>=3.2,<4",
     "pydantic>=2,<3",
     "pydantic-settings>=2,<3",
 ]
@@ -24,3 +25,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+markers = ["integration: requires an explicitly configured PostgreSQL/pgvector test database"]
+
+[tool.setuptools.package-data]
+"infectious_disease_assistant.rag" = ["sql/*.sql"]

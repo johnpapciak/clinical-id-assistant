@@ -108,7 +108,7 @@ def test_runner_has_one_agent_scoped_context_and_bounded_execution(agent_model, 
     assert agent.model.model == "test-model"
     assert agent.handoffs == []
     assert agent.mcp_servers == []
-    assert [tool.name for tool in agent.tools] == [tool.name for tool in PATIENT_TOOLS]
+    assert [tool.name for tool in agent.tools] == [tool.name for tool in PATIENT_TOOLS] + ["search_guidelines"]
     assert agent.model_settings.tool_choice == "auto"
     assert agent.model_settings.store is True
     assert agent.output_type is ClinicalSummary
@@ -199,3 +199,59 @@ def test_unsupported_output_fails_without_completed_event(agent_model, make_clin
     assert caplog.records[-1].event_fields["error_type"] == "SummaryEvidenceError"
     assert "investigation_completed" not in caplog.text
     assert "Fabricated organism" not in caplog.text
+
+
+def test_agent_can_combine_fhir_tools_with_optional_rag(agent_model, guideline_match, monkeypatch, make_clinical_summary, sdk_traces, caplog):
+    from unittest.mock import Mock
+    from infectious_disease_assistant.models.clinical_summary import ClinicalFinding, EvidenceReference
+
+    caplog.set_level("INFO", logger="infectious_disease_assistant")
+    search = Mock(return_value=[guideline_match])
+    monkeypatch.setattr("infectious_disease_assistant.tools.guideline_tools.service.search_guidelines", search)
+    expected = make_clinical_summary(tools=["get_microbiology_results", "get_recent_labs", "search_guidelines"])
+    expected.important_findings.append(ClinicalFinding(
+        text="Synthetic checklist context identifies baseline renal measurements as review context.",
+        evidence=[EvidenceReference(tool_name="search_guidelines", record_index=0)],
+    ))
+    expected.guideline_sources = [guideline_match.citation()]
+    rag_response = tool_response(["search_guidelines"], 2)
+    rag_response.output[0].arguments = '{"query":"creatinine and renal laboratory review context", "top_k":2}'
+    agent_model.side_effect = [
+        tool_response(["get_microbiology_results"]), tool_response(["get_recent_labs"], 1),
+        rag_response, final_response(expected),
+    ]
+    summary = asyncio.run(investigate_patient("PATIENT_001", guideline_question="What renal review context is missing?"))
+    assert summary == expected
+    assert summary.guideline_sources[0].source == guideline_match.source
+    search.assert_called_once_with("creatinine and renal laboratory review context", 2)
+    functions = [span.span_data for span in sdk_traces.spans if span.span_data.type == "function"]
+    assert [span.name for span in functions] == ["get_microbiology_results", "get_recent_labs", "search_guidelines"]
+    assert json.loads(functions[-1].input)["top_k"] == 2
+    assert json.loads(functions[-1].output)["records"][0]["chunk_id"] == guideline_match.chunk_id
+    assert guideline_match.text not in caplog.text
+    assert caplog.records[-1].message == "investigation_completed"
+
+
+def test_no_rag_call_needs_no_database_or_embedding_settings(agent_model, monkeypatch, make_clinical_summary):
+    from unittest.mock import Mock
+    forbidden = Mock(side_effect=AssertionError("RAG configuration must be lazy"))
+    monkeypatch.setattr("infectious_disease_assistant.rag.service.RagSettings", forbidden)
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]),
+                              final_response(make_clinical_summary("PATIENT_004", ["get_microbiology_results"]))]
+    summary = asyncio.run(investigate_patient("PATIENT_004"))
+    assert summary.guideline_sources == []
+    forbidden.assert_not_called()
+
+
+def test_rag_database_failure_aborts_sdk_investigation(agent_model, monkeypatch):
+    from unittest.mock import Mock
+    from infectious_disease_assistant.rag.errors import GuidelineDatabaseError
+    monkeypatch.setattr("infectious_disease_assistant.tools.guideline_tools.service.search_guidelines",
+                        Mock(side_effect=GuidelineDatabaseError("Guideline database unavailable")))
+    rag_response = tool_response(["search_guidelines"], 1)
+    rag_response.output[0].arguments = '{"query":"culture context", "top_k":3}'
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), rag_response]
+    with pytest.raises(UserError) as caught:
+        asyncio.run(investigate_patient("PATIENT_001"))
+    assert isinstance(caught.value.__cause__, GuidelineDatabaseError)
+    assert agent_model.await_count == 2

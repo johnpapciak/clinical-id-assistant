@@ -25,10 +25,14 @@ def main() -> int:
         description="Investigate synthetic microbiology with JSON output and SDK tracing.",
     )
     parser.add_argument("patient_id", help="Synthetic ID, for example PATIENT_001")
+    parser.add_argument(
+        "--guideline-question", help="Optional review topic; the agent still chooses whether to search guidelines",
+    )
     args = parser.parse_args()
     try:
         configure_logging(Settings().log_level)
-        summary = asyncio.run(investigate_patient(args.patient_id))
+        options = {"guideline_question": args.guideline_question} if args.guideline_question is not None else {}
+        summary = asyncio.run(investigate_patient(args.patient_id, **options))
     except (
         InvalidPatientIdError, PatientNotFoundError, FhirError,
         AgentDemoError, SummaryEvidenceError,

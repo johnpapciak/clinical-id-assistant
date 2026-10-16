@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary, ToolName
 from infectious_disease_assistant.models.patient import MicrobiologyResult
+from infectious_disease_assistant.rag.models import GuidelineMatch
 
 
 class SummaryEvidenceError(ValueError):
@@ -49,4 +50,21 @@ def validate_summary_evidence(
         for reference in finding.evidence:
             if reference.record_index >= len(tool_results.get(reference.tool_name, ())):
                 raise SummaryEvidenceError("A finding cites a record that was not retrieved")
+    retrieved_guidelines = tool_results.get("search_guidelines", ())
+    used_indices = {
+        reference.record_index
+        for finding in summary.important_findings
+        for reference in finding.evidence
+        if reference.tool_name == "search_guidelines"
+    }
+    expected_citations = [
+        record.citation() for index, record in enumerate(retrieved_guidelines)
+        if index in used_indices and isinstance(record, GuidelineMatch)
+    ]
+    if (
+        len(summary.guideline_sources) != len(expected_citations)
+        or any(citation not in expected_citations for citation in summary.guideline_sources)
+        or len({citation.chunk_id for citation in summary.guideline_sources}) != len(summary.guideline_sources)
+    ):
+        raise SummaryEvidenceError("Guideline citations must match the retrieved chunks used in findings")
     return summary

@@ -2,6 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
 
+from infectious_disease_assistant.rag.models import GuidelineCitation
 from infectious_disease_assistant.models.patient import (
     Allergy, HealthcareModel, LabResult, Medication, PatientId, PreviousInfection,
 )
@@ -12,7 +13,7 @@ CLINICAL_DISCLAIMER = (
 )
 ToolName = Literal[
     "get_medications", "get_allergies", "get_recent_labs",
-    "get_microbiology_results", "get_previous_infections",
+    "get_microbiology_results", "get_previous_infections", "search_guidelines",
 ]
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -40,4 +41,5 @@ class ClinicalSummary(HealthcareModel):
     missing_information: list[NonEmptyText] = Field(default_factory=list)
     items_for_clinician_review: list[NonEmptyText] = Field(default_factory=list)
     evidence_sources: list[ToolName] = Field(default_factory=list)
+    guideline_sources: list[GuidelineCitation] = Field(default_factory=list)
     disclaimer: Literal[CLINICAL_DISCLAIMER] = CLINICAL_DISCLAIMER
