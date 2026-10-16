@@ -76,28 +76,10 @@ class Encounter(HealthcareModel):
     reason: str
 
 
-class PatientRecord(HealthcareModel):
+class PatientContextInfo(HealthcareModel):
     patient_id: PatientId
-    age: int | None = Field(default=None, ge=0, le=130)
-    medications: list[Medication] = Field(default_factory=list)
-    allergies: list[Allergy] = Field(default_factory=list)
-    labs: list[LabResult] = Field(default_factory=list)
-    microbiology_results: list[MicrobiologyResult] = Field(default_factory=list)
-    previous_infections: list[PreviousInfection] = Field(default_factory=list)
-    diagnoses: list[Diagnosis] = Field(default_factory=list)
-    encounters: list[Encounter] = Field(default_factory=list)
-
-
-class PatientDataset(HealthcareModel):
+    age: int | None
     reference_date: date
-    patients: list[PatientRecord]
-
-    @model_validator(mode="after")
-    def validate_unique_patients(self) -> "PatientDataset":
-        patient_ids = [patient.patient_id for patient in self.patients]
-        if len(patient_ids) != len(set(patient_ids)):
-            raise ValueError("Patient IDs must be unique")
-        return self
 
 
 class PatientSummary(HealthcareModel):

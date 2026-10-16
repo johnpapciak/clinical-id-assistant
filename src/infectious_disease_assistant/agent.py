@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from infectious_disease_assistant.config import AgentSettings
 from infectious_disease_assistant.models.clinical_summary import CLINICAL_DISCLAIMER, ClinicalSummary
 from infectious_disease_assistant.observability import InvestigationHooks, log_event, trace_url
-from infectious_disease_assistant.services.patients import get_patient_summary
+from infectious_disease_assistant.services.patients import get_patient_context
 from infectious_disease_assistant.services.summary_validation import validate_summary_evidence
 from infectious_disease_assistant.tools.patient_tools import PATIENT_TOOLS, PatientContext
 
@@ -87,7 +87,7 @@ async def investigate_patient(
     started = perf_counter()
     log_event("investigation_started", patient_id=safe_id, trace_id=investigation_trace_id)
     try:
-        patient = get_patient_summary(patient_id)
+        patient = get_patient_context(patient_id)
         context = PatientContext(patient.patient_id, patient.reference_date)
         settings = AgentSettings()
         with trace(

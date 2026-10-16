@@ -1,0 +1,2234 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-patients",
+  "type": "collection",
+  "timestamp": "2026-10-15T00:00:00Z",
+  "meta": {
+    "tag": [
+      {
+        "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/dataset",
+        "code": "synthetic"
+      }
+    ]
+  },
+  "entry": [
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Patient/patient-001",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-001",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/patient",
+            "value": "PATIENT_001"
+          }
+        ],
+        "active": true,
+        "birthDate": "1959-10-15"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-001-med-0",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-001-med-0",
+        "status": "active",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "medicationCodeableConcept": {
+          "text": "cephalexin"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "every 12 hours"
+              }
+            },
+            "route": {
+              "text": "oral"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 500.0,
+                  "unit": "mg"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-001-med-1",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-001-med-1",
+        "status": "active",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "medicationCodeableConcept": {
+          "text": "lisinopril"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "daily"
+              }
+            },
+            "route": {
+              "text": "oral"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 10.0,
+                  "unit": "mg"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-001-med-2",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-001-med-2",
+        "status": "completed",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "medicationCodeableConcept": {
+          "text": "nitrofurantoin"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "every 12 hours"
+              }
+            },
+            "route": {
+              "text": "oral"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 100.0,
+                  "unit": "mg"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/AllergyIntolerance/patient-001-allergy-0",
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "id": "patient-001-allergy-0",
+        "patient": {
+          "reference": "Patient/patient-001"
+        },
+        "code": {
+          "text": "trimethoprim-sulfamethoxazole"
+        },
+        "clinicalStatus": {
+          "text": "Active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "code": "active",
+              "display": "Active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "text": "Confirmed",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "code": "confirmed",
+              "display": "Confirmed"
+            }
+          ]
+        },
+        "reaction": [
+          {
+            "manifestation": [
+              {
+                "text": "urticaria"
+              }
+            ],
+            "severity": "moderate"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-001-lab-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-001-lab-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "creatinine",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2160-0",
+              "display": "creatinine"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-14",
+        "valueQuantity": {
+          "value": 1.8,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "text": "high",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "high"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-001-lab-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-001-lab-1",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "white blood cell count",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "6690-2",
+              "display": "white blood cell count"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-14",
+        "valueQuantity": {
+          "value": 12.4,
+          "unit": "10^3/uL"
+        },
+        "interpretation": [
+          {
+            "text": "high",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "high"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-001-lab-2",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-001-lab-2",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "creatinine",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2160-0",
+              "display": "creatinine"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-06-08",
+        "valueQuantity": {
+          "value": 1.2,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "text": "normal",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "N",
+                "display": "normal"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-001-recent-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-001-recent-specimen",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "type": {
+          "text": "urine"
+        },
+        "collection": {
+          "collectedDateTime": "2026-10-13"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-recent-organism",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-recent-organism",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Organism",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "organism",
+              "display": "Organism"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-13",
+        "valueCodeableConcept": {
+          "text": "Escherichia coli"
+        },
+        "component": [
+          {
+            "code": {
+              "text": "Colony count",
+              "coding": [
+                {
+                  "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+                  "code": "colony-count",
+                  "display": "Colony count"
+                }
+              ]
+            },
+            "valueString": ">100,000 CFU/mL"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-recent-susceptibility-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-recent-susceptibility-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "code": {
+          "text": "ampicillin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "ampicillin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-13",
+        "valueCodeableConcept": {
+          "text": "resistant",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "R",
+              "display": "resistant"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-recent-susceptibility-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-recent-susceptibility-1",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "code": {
+          "text": "cefazolin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "cefazolin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-13",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-recent-susceptibility-2",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-recent-susceptibility-2",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "code": {
+          "text": "nitrofurantoin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "nitrofurantoin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-13",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-001-recent",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-001-recent",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_001_RECENT"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-10-13",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-001-recent-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "growth",
+                "display": "growth"
+              }
+            ]
+          }
+        ],
+        "result": [
+          {
+            "reference": "Observation/micro-001-recent-organism"
+          },
+          {
+            "reference": "Observation/micro-001-recent-susceptibility-0"
+          },
+          {
+            "reference": "Observation/micro-001-recent-susceptibility-1"
+          },
+          {
+            "reference": "Observation/micro-001-recent-susceptibility-2"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-001-prior-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-001-prior-specimen",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "type": {
+          "text": "urine"
+        },
+        "collection": {
+          "collectedDateTime": "2026-06-08"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-prior-organism",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-prior-organism",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Organism",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "organism",
+              "display": "Organism"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-06-08",
+        "valueCodeableConcept": {
+          "text": "Escherichia coli"
+        },
+        "component": [
+          {
+            "code": {
+              "text": "Colony count",
+              "coding": [
+                {
+                  "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+                  "code": "colony-count",
+                  "display": "Colony count"
+                }
+              ]
+            },
+            "valueString": ">100,000 CFU/mL"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-001-prior-susceptibility-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-001-prior-susceptibility-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "code": {
+          "text": "nitrofurantoin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "nitrofurantoin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-06-08",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-001-prior",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-001-prior",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_001_PRIOR"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-06-08",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-001-prior-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "growth",
+                "display": "growth"
+              }
+            ]
+          }
+        ],
+        "result": [
+          {
+            "reference": "Observation/micro-001-prior-organism"
+          },
+          {
+            "reference": "Observation/micro-001-prior-susceptibility-0"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-001-history-0",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-001-history-0",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Recorded infection history",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/condition-category",
+                "code": "infection-history",
+                "display": "Recorded infection history"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "Resolved",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "resolved",
+              "display": "Resolved"
+            }
+          ]
+        },
+        "code": {
+          "text": "urinary tract infection"
+        },
+        "onsetDateTime": "2026-06-09",
+        "recordedDate": "2026-06-09",
+        "bodySite": [
+          {
+            "text": "urinary tract"
+          }
+        ],
+        "extension": [
+          {
+            "url": "https://infectious-disease-assistant.example/fhir/StructureDefinition/infection-organism",
+            "valueString": "Escherichia coli"
+          },
+          {
+            "url": "https://infectious-disease-assistant.example/fhir/StructureDefinition/previous-treatment",
+            "valueString": "nitrofurantoin"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-001-diagnosis-0",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-001-diagnosis-0",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Problem list item",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem list item"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active",
+              "display": "active"
+            }
+          ]
+        },
+        "code": {
+          "text": "hypertension"
+        },
+        "recordedDate": "2025-01-10"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-001-diagnosis-1",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-001-diagnosis-1",
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "category": [
+          {
+            "text": "Problem list item",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem list item"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active",
+              "display": "active"
+            }
+          ]
+        },
+        "code": {
+          "text": "urinary tract infection"
+        },
+        "recordedDate": "2026-10-14"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Encounter/encounter-001",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "encounter-001",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/encounter",
+            "value": "ENCOUNTER_001"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-001"
+        },
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB"
+        },
+        "period": {
+          "start": "2026-10-14"
+        },
+        "reasonCode": [
+          {
+            "text": "dysuria and urinary frequency"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Patient/patient-002",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-002",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/patient",
+            "value": "PATIENT_002"
+          }
+        ],
+        "active": true,
+        "birthDate": "1992-10-15"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-002-lab-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-002-lab-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "creatinine",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2160-0",
+              "display": "creatinine"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-12",
+        "valueQuantity": {
+          "value": 0.8,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "text": "normal",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "N",
+                "display": "normal"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-002-lab-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-002-lab-1",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "white blood cell count",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "6690-2",
+              "display": "white blood cell count"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-12",
+        "valueQuantity": {
+          "value": 7.1,
+          "unit": "10^3/uL"
+        },
+        "interpretation": [
+          {
+            "text": "normal",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "N",
+                "display": "normal"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-002-recent-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-002-recent-specimen",
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "type": {
+          "text": "urine"
+        },
+        "collection": {
+          "collectedDateTime": "2026-10-12"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-002-recent-organism",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-002-recent-organism",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Organism",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "organism",
+              "display": "Organism"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-12",
+        "valueCodeableConcept": {
+          "text": "Escherichia coli"
+        },
+        "component": [
+          {
+            "code": {
+              "text": "Colony count",
+              "coding": [
+                {
+                  "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+                  "code": "colony-count",
+                  "display": "Colony count"
+                }
+              ]
+            },
+            "valueString": ">100,000 CFU/mL"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-002-recent-susceptibility-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-002-recent-susceptibility-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "code": {
+          "text": "nitrofurantoin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "nitrofurantoin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-12",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-002-recent",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-002-recent",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_002_RECENT"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-10-12",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-002-recent-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "growth",
+                "display": "growth"
+              }
+            ]
+          }
+        ],
+        "result": [
+          {
+            "reference": "Observation/micro-002-recent-organism"
+          },
+          {
+            "reference": "Observation/micro-002-recent-susceptibility-0"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Encounter/encounter-002",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "encounter-002",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/encounter",
+            "value": "ENCOUNTER_002"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-002"
+        },
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB"
+        },
+        "period": {
+          "start": "2026-10-12"
+        },
+        "reasonCode": [
+          {
+            "text": "urinary symptoms; urine culture collected"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Patient/patient-003",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-003",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/patient",
+            "value": "PATIENT_003"
+          }
+        ],
+        "active": true,
+        "birthDate": "1974-10-15"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-003-med-0",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-003-med-0",
+        "status": "active",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "medicationCodeableConcept": {
+          "text": "doxycycline"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "every 12 hours"
+              }
+            },
+            "route": {
+              "text": "oral"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 100.0,
+                  "unit": "mg"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/AllergyIntolerance/patient-003-allergy-0",
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "id": "patient-003-allergy-0",
+        "patient": {
+          "reference": "Patient/patient-003"
+        },
+        "code": {
+          "text": "penicillin"
+        },
+        "clinicalStatus": {
+          "text": "Active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "code": "active",
+              "display": "Active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "text": "Confirmed",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "code": "confirmed",
+              "display": "Confirmed"
+            }
+          ]
+        },
+        "reaction": [
+          {
+            "manifestation": [
+              {
+                "text": "anaphylaxis"
+              }
+            ],
+            "severity": "severe"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-003-lab-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-003-lab-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "creatinine",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2160-0",
+              "display": "creatinine"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-11",
+        "valueQuantity": {
+          "value": 1.0,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "text": "normal",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "N",
+                "display": "normal"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-003-lab-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-003-lab-1",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "white blood cell count",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "6690-2",
+              "display": "white blood cell count"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-11",
+        "valueQuantity": {
+          "value": 11.2,
+          "unit": "10^3/uL"
+        },
+        "interpretation": [
+          {
+            "text": "high",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "high"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-003-recent-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-003-recent-specimen",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "type": {
+          "text": "wound"
+        },
+        "collection": {
+          "collectedDateTime": "2026-10-10"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-003-recent-organism",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-003-recent-organism",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Organism",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "organism",
+              "display": "Organism"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-10",
+        "valueCodeableConcept": {
+          "text": "Staphylococcus aureus"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-003-recent-susceptibility-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-003-recent-susceptibility-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "code": {
+          "text": "oxacillin",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "oxacillin"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-10",
+        "valueCodeableConcept": {
+          "text": "resistant",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "R",
+              "display": "resistant"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-003-recent-susceptibility-1",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-003-recent-susceptibility-1",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "code": {
+          "text": "tetracycline",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "tetracycline"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-10",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-003-recent",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-003-recent",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_003_RECENT"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-10-10",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-003-recent-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "growth",
+                "display": "growth"
+              }
+            ]
+          }
+        ],
+        "result": [
+          {
+            "reference": "Observation/micro-003-recent-organism"
+          },
+          {
+            "reference": "Observation/micro-003-recent-susceptibility-0"
+          },
+          {
+            "reference": "Observation/micro-003-recent-susceptibility-1"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-003-diagnosis-0",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-003-diagnosis-0",
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "category": [
+          {
+            "text": "Problem list item",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem list item"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active",
+              "display": "active"
+            }
+          ]
+        },
+        "code": {
+          "text": "skin abscess"
+        },
+        "recordedDate": "2026-10-11"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Encounter/encounter-003",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "encounter-003",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/encounter",
+            "value": "ENCOUNTER_003"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-003"
+        },
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "EMER"
+        },
+        "period": {
+          "start": "2026-10-11"
+        },
+        "reasonCode": [
+          {
+            "text": "draining skin abscess"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Patient/patient-004",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-004",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/patient",
+            "value": "PATIENT_004"
+          }
+        ],
+        "active": true,
+        "birthDate": "1950-10-15"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-004-med-0",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-004-med-0",
+        "status": "active",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "medicationCodeableConcept": {
+          "text": "amlodipine"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "daily"
+              }
+            },
+            "route": {
+              "text": "oral"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 5.0,
+                  "unit": "mg"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/MedicationRequest/patient-004-med-1",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "patient-004-med-1",
+        "status": "stopped",
+        "intent": "order",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "medicationCodeableConcept": {
+          "text": "ceftriaxone"
+        },
+        "dosageInstruction": [
+          {
+            "timing": {
+              "code": {
+                "text": "daily"
+              }
+            },
+            "route": {
+              "text": "intravenous"
+            },
+            "doseAndRate": [
+              {
+                "doseQuantity": {
+                  "value": 1.0,
+                  "unit": "g"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/AllergyIntolerance/patient-004-allergy-0",
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "id": "patient-004-allergy-0",
+        "patient": {
+          "reference": "Patient/patient-004"
+        },
+        "code": {
+          "text": "ciprofloxacin"
+        },
+        "clinicalStatus": {
+          "text": "Active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "code": "active",
+              "display": "Active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "text": "Confirmed",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "code": "confirmed",
+              "display": "Confirmed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/patient-004-lab-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "patient-004-lab-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          },
+          {
+            "text": "Routine lab",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/observation-category",
+                "code": "routine-lab",
+                "display": "Routine lab"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "creatinine",
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2160-0",
+              "display": "creatinine"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-10-14",
+        "valueQuantity": {
+          "value": 2.3,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "text": "high",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                "code": "H",
+                "display": "high"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-004-recent-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-004-recent-specimen",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "type": {
+          "text": "blood"
+        },
+        "collection": {
+          "collectedDateTime": "2026-10-09"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-004-recent",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-004-recent",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_004_RECENT"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-10-09",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-004-recent-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "no_growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "no_growth",
+                "display": "no_growth"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Specimen/micro-004-prior-specimen",
+      "resource": {
+        "resourceType": "Specimen",
+        "id": "micro-004-prior-specimen",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "type": {
+          "text": "urine"
+        },
+        "collection": {
+          "collectedDateTime": "2026-02-03"
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-004-prior-organism",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-004-prior-organism",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "category": [
+          {
+            "text": "Laboratory",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Organism",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "organism",
+              "display": "Organism"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-02-03",
+        "valueCodeableConcept": {
+          "text": "Klebsiella pneumoniae"
+        },
+        "component": [
+          {
+            "code": {
+              "text": "Colony count",
+              "coding": [
+                {
+                  "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+                  "code": "colony-count",
+                  "display": "Colony count"
+                }
+              ]
+            },
+            "valueString": ">100,000 CFU/mL"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Observation/micro-004-prior-susceptibility-0",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "micro-004-prior-susceptibility-0",
+        "status": "final",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "code": {
+          "text": "ceftriaxone",
+          "coding": [
+            {
+              "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/microbiology-observation",
+              "code": "susceptibility",
+              "display": "ceftriaxone"
+            }
+          ]
+        },
+        "effectiveDateTime": "2026-02-03",
+        "valueCodeableConcept": {
+          "text": "susceptible",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              "code": "S",
+              "display": "susceptible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/DiagnosticReport/micro-004-prior",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "micro-004-prior",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/microbiology",
+            "value": "MICRO_004_PRIOR"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "status": "final",
+        "category": [
+          {
+            "text": "Microbiology",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "MIC",
+                "display": "Microbiology"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "text": "Culture"
+        },
+        "effectiveDateTime": "2026-02-03",
+        "specimen": [
+          {
+            "reference": "Specimen/micro-004-prior-specimen"
+          }
+        ],
+        "conclusionCode": [
+          {
+            "text": "growth",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/culture-outcome",
+                "code": "growth",
+                "display": "growth"
+              }
+            ]
+          }
+        ],
+        "result": [
+          {
+            "reference": "Observation/micro-004-prior-organism"
+          },
+          {
+            "reference": "Observation/micro-004-prior-susceptibility-0"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-004-history-0",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-004-history-0",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "category": [
+          {
+            "text": "Recorded infection history",
+            "coding": [
+              {
+                "system": "https://infectious-disease-assistant.example/fhir/CodeSystem/condition-category",
+                "code": "infection-history",
+                "display": "Recorded infection history"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "Resolved",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "resolved",
+              "display": "Resolved"
+            }
+          ]
+        },
+        "code": {
+          "text": "urinary tract infection"
+        },
+        "onsetDateTime": "2026-02-04",
+        "recordedDate": "2026-02-04",
+        "bodySite": [
+          {
+            "text": "urinary tract"
+          }
+        ],
+        "extension": [
+          {
+            "url": "https://infectious-disease-assistant.example/fhir/StructureDefinition/infection-organism",
+            "valueString": "Klebsiella pneumoniae"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Condition/patient-004-diagnosis-0",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "patient-004-diagnosis-0",
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "category": [
+          {
+            "text": "Problem list item",
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "problem-list-item",
+                "display": "Problem list item"
+              }
+            ]
+          }
+        ],
+        "clinicalStatus": {
+          "text": "active",
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active",
+              "display": "active"
+            }
+          ]
+        },
+        "code": {
+          "text": "chronic kidney disease"
+        },
+        "recordedDate": "2025-03-12"
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Encounter/encounter-004",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "encounter-004",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/encounter",
+            "value": "ENCOUNTER_004"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-004"
+        },
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "IMP"
+        },
+        "period": {
+          "start": "2026-10-09"
+        },
+        "reasonCode": [
+          {
+            "text": "fever evaluation"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Patient/patient-005",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "patient-005",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/patient",
+            "value": "PATIENT_005"
+          }
+        ],
+        "active": true
+      }
+    },
+    {
+      "fullUrl": "http://127.0.0.1:8765/fhir/Encounter/encounter-005",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "encounter-005",
+        "identifier": [
+          {
+            "system": "https://infectious-disease-assistant.example/fhir/sid/encounter",
+            "value": "ENCOUNTER_005"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/patient-005"
+        },
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB"
+        },
+        "period": {
+          "start": "2026-10-15"
+        },
+        "reasonCode": [
+          {
+            "text": "new patient visit; limited synthetic history"
+          }
+        ]
+      }
+    }
+  ]
+}

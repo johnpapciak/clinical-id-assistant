@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from infectious_disease_assistant.agent import AgentDemoError, investigate_patient
 from infectious_disease_assistant.config import Settings
-from infectious_disease_assistant.data_loader import DataLoadError
+from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.models.clinical_summary import ClinicalSummary
 from infectious_disease_assistant.observability import configure_logging
 from infectious_disease_assistant.services.patients import InvalidPatientIdError, PatientNotFoundError
@@ -30,7 +30,7 @@ def main() -> int:
         configure_logging(Settings().log_level)
         summary = asyncio.run(investigate_patient(args.patient_id))
     except (
-        InvalidPatientIdError, PatientNotFoundError, DataLoadError,
+        InvalidPatientIdError, PatientNotFoundError, FhirError,
         AgentDemoError, SummaryEvidenceError,
     ) as error:
         print(f"Error: {error}", file=sys.stderr)

@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import httpx
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,12 +52,12 @@ def test_cli_configuration_error(agent_model, monkeypatch, capsys):
     agent_model.assert_not_awaited()
 
 
-def test_cli_data_error(agent_model, monkeypatch, tmp_path, capsys):
+def test_cli_data_error(agent_model, monkeypatch, fhir_api, capsys):
     monkeypatch.setattr(sys, "argv", ["agent_demo", "PATIENT_001"])
-    monkeypatch.setenv("IDA_DATA_DIR", str(tmp_path))
+    fhir_api.responses["/fhir/metadata"] = httpx.Response(503, json={"resourceType": "OperationOutcome"})
 
     assert agent_demo.main() == 1
-    assert "Could not load synthetic patient data" in capsys.readouterr().err
+    assert "FHIR endpoint returned HTTP 503" in capsys.readouterr().err
     agent_model.assert_not_awaited()
 
 

@@ -35,24 +35,56 @@ from infectious_disease_assistant.config import Settings
 settings = Settings()
 ```
 
-`IDA_DATA_DIR` defaults to `data`, relative to the working directory. The loader
-validates record structure but cannot detect PHI or enforce synthetic provenance.
-Only add deliberately fabricated data.
+`IDA_DATA_DIR` defaults to `data` and is used only by the local FHIR service to
+load `fhir/bundle.json`. The application uses `IDA_FHIR_BASE_URL`, defaulting to
+`http://127.0.0.1:8765/fhir`. Only loopback HTTP endpoints are accepted. Metadata
+must declare synthetic-only data and FHIR R4 version `4.0.1`. These markers and
+schema checks cannot detect PHI; only add deliberately fabricated fixtures.
+
+## Start the synthetic FHIR API
+
+From the repository root, start this read-only service in a separate terminal:
+
+```sh
+source .venv/bin/activate
+python -m infectious_disease_assistant.fhir.server
+```
+
+It binds to `127.0.0.1`, loads the committed fixture Bundle, and uses Python's
+standard-library HTTP server. No external FHIR server, database, or FastAPI is
+needed. For a different port, use `--port 8766` and set
+`IDA_FHIR_BASE_URL=http://127.0.0.1:8766/fhir` for client commands.
+
+Explore the REST endpoints directly:
+
+```sh
+curl -H 'Accept: application/fhir+json' http://127.0.0.1:8765/fhir/metadata
+curl -H 'Accept: application/fhir+json' http://127.0.0.1:8765/fhir/Patient/patient-001
+curl --get http://127.0.0.1:8765/fhir/MedicationRequest \
+  --data-urlencode 'patient=Patient/patient-001' --data-urlencode 'status=active'
+```
+
+Reads return individual FHIR resources. Searches return `Bundle` resources with
+`type=searchset`, including empty Bundles for no matches. Missing reads return
+404 `OperationOutcome`; writes return 405. The supported subset and local codes
+are documented in [data/README.md](data/README.md).
 
 ## Patient lookup
 
-From the repository root with the virtual environment active:
+With the FHIR service running and the virtual environment active, use another terminal:
 
 ```sh
 python -m infectious_disease_assistant PATIENT_001
 ```
 
 Omit the ID to enter it at a prompt. Successful lookups print a JSON summary;
-invalid IDs, unknown patients, or data-loading errors print an error to stderr
+invalid IDs, unknown patients, or FHIR errors print an error to stderr
 and exit with status 1. IDs must match `PATIENT_` followed by exactly three ASCII
-digits. For lookups from another working directory, set `IDA_DATA_DIR` to the
-absolute path of this repository's `data/` directory. Fixtures live in the
-repository and are not bundled into the installed Python package.
+digits. Public synthetic IDs such as `PATIENT_001` are FHIR business identifiers;
+the client resolves them through a `Patient.identifier` search. Resource IDs such
+as `patient-001` follow FHIR's ID character rules. Only the FHIR service reads the
+fixture files; clients need its base URL. Fixtures are not bundled into the
+installed package.
 
 The deterministic API is in `infectious_disease_assistant.services.patients`:
 
@@ -66,10 +98,11 @@ The deterministic API is in `infectious_disease_assistant.services.patients`:
 | `get_previous_infections(patient_id)` | `list[PreviousInfection]`, explicitly recorded infection history |
 
 Functions raise `InvalidPatientIdError` for malformed IDs and
-`PatientNotFoundError` for a valid but absent ID. File and schema failures raise
-`DataLoadError` from `infectious_disease_assistant.data_loader`.
+`PatientNotFoundError` for a valid but absent ID. Transport, response-envelope,
+and parsing failures raise subclasses of `FhirError` from
+`infectious_disease_assistant.fhir.errors`.
 
-The dataset's `reference_date` anchors all retrieval; the system clock is unused.
+The synthetic reference date advertised by FHIR metadata anchors retrieval; the system clock is unused.
 Recent labs span `reference_date - 30 days` through `reference_date`, inclusive.
 Microbiology, diagnoses, and encounters include records on or before that date;
 previous infections include records strictly before it. Dated lists are returned
@@ -82,20 +115,20 @@ empty lists. Empty lists mean no entries recorded, not confirmed clinical absenc
 Install the updated dependencies with `python -m pip install -e '.[dev]'`. Set
 `OPENAI_MODEL` to a model supporting function tools and put your `OPENAI_API_KEY`
 in the environment or your ignored local `.env`. `.env.example` provides an
-example model name and leaves the key blank.
+example model name and leaves the key blank. Keep the local FHIR service running.
 
 ```sh
 python -m infectious_disease_assistant.agent_demo PATIENT_001
 python -m infectious_disease_assistant.agent_demo PATIENT_004
 ```
 
-This command makes live OpenAI API calls. It validates the patient locally, then
+This command makes live OpenAI API calls. It validates the patient through the local FHIR API, then
 sends only a synthetic patient ID and a new-microbiology-result notification.
 The model chooses which of the five tools to call. Each tool is bound to the
 selected patient through local SDK context; the model cannot select another ID.
 Tool results include the patient ID, dataset reference date, and JSON records
-serialized from the deterministic service models. The full patient summary used
-for local validation is not sent to the model.
+serialized from the deterministic service models. Preflight retrieves only
+patient context, and subsequent tool calls retrieve only their resource sections.
 
 The instructions ask the model to inspect microbiology first and retrieve other
 sections only when relevant. Tool choices can vary between patients and runs;
@@ -159,20 +192,18 @@ structured-output parser, and native spans through a test-only in-memory process
 
 ## Architecture and scope
 
-The package uses a `src/` layout. `config.py` holds configuration; `models/`
-defines Pydantic data contracts, `data_loader.py` reads and validates JSON, and
-`services/` retrieves typed patient information. `tools/patient_tools.py` adds SDK
-wrappers, `agent.py` configures one coordinator and its run loop, and
-`agent_demo.py` provides the agent CLI. `data/` contains five synthetic fixtures.
-Each service call loads a fresh dataset; this small project needs no cache,
-repository interface, or database.
+The package uses a `src/` layout. `fhir/client.py` handles HTTP reads/searches;
+`fhir/models.py` and `fhir/parsing.py` validate and map the supported R4 subset;
+`services/` selects relevant typed domain records. `tools/patient_tools.py` keeps
+the existing agent tool names. `fhir/server.py` is the only runtime fixture reader,
+backed by the five-patient `data/fhir/bundle.json` collection. Domain retrieval
+has no agent framework dependency. Tests use `httpx.MockTransport` and require
+neither a running FHIR service nor live model access.
 
 The planned workflow receives synthetic lab results through FastAPI, coordinates
 controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RAG,
 and produces a structured summary for human approval before any simulated action.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
-This milestone adds structured summaries, SDK tracing, and application event
-logs to the single coordinator while preserving deterministic retrieval.
-FHIR integration, databases, RAG, FastAPI, multiple agents, and a frontend remain
-deferred.
+This milestone replaces direct custom JSON access with a synthetic FHIR HTTP
+adapter. Databases, RAG, FastAPI, multiple agents, and a frontend remain deferred.

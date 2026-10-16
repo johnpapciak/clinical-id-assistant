@@ -1,5 +1,6 @@
 import asyncio
 import json
+import httpx
 from datetime import date
 
 import pytest
@@ -7,7 +8,7 @@ from agents import FunctionTool
 from agents.exceptions import ModelBehaviorError
 from agents.tool_context import ToolContext
 
-from infectious_disease_assistant.data_loader import DataLoadError
+from infectious_disease_assistant.fhir.errors import FhirError
 from infectious_disease_assistant.services import patients
 from infectious_disease_assistant.tools.patient_tools import PATIENT_TOOLS, PatientContext
 
@@ -63,10 +64,10 @@ def test_patient_errors_propagate_without_model_visible_fallback(tool, patient_i
         invoke(tool, patient_id)
 
 
-def test_data_failure_propagates(monkeypatch, tmp_path):
-    monkeypatch.setenv("IDA_DATA_DIR", str(tmp_path))
+def test_data_failure_propagates(fhir_api):
+    fhir_api.responses["/fhir/metadata"] = httpx.Response(503, json={"resourceType": "OperationOutcome"})
 
-    with pytest.raises(DataLoadError):
+    with pytest.raises(FhirError):
         invoke(PATIENT_TOOLS[0])
 
 
