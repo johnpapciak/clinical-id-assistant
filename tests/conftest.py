@@ -58,6 +58,10 @@ def sdk_traces():
 def configure_synthetic_data(monkeypatch):
     monkeypatch.setenv("IDA_DATA_DIR", str(DATA_DIR))
     monkeypatch.setenv("IDA_FHIR_BASE_URL", "http://127.0.0.1:8765/fhir")
+    monkeypatch.setenv("IDA_CURRENT_USER_ID", "REVIEWER_001")
+    monkeypatch.setenv("IDA_PATIENT_ASSIGNMENTS", json.dumps({
+        "REVIEWER_001": [*[f"PATIENT_{number:03}" for number in range(1, 6)], "PATIENT_999"],
+    }))
 
 
 @pytest.fixture
@@ -95,6 +99,8 @@ def agent_model(monkeypatch, tmp_path, sdk_traces):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_MODEL", "test-model")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("IDA_TRACE_INCLUDE_PAYLOADS", "true")
+    monkeypatch.setenv("IDA_STORE_MODEL_RESPONSES", "true")
     monkeypatch.delenv("OPENAI_AGENTS_DISABLE_TRACING", raising=False)
     model = AsyncMock(side_effect=AssertionError("Live model calls are disabled in tests"))
     monkeypatch.setattr(OpenAIResponsesModel, "_fetch_response", model)

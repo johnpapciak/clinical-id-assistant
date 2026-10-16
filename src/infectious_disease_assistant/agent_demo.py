@@ -6,7 +6,9 @@ from agents import flush_traces
 from agents.exceptions import AgentsException
 from openai import OpenAIError
 from pydantic import ValidationError
+from pydantic_settings import SettingsError
 
+from infectious_disease_assistant.authorization import PatientAccessDeniedError
 from infectious_disease_assistant.agent import AgentDemoError, investigate_patient
 from infectious_disease_assistant.config import Settings
 from infectious_disease_assistant.fhir.errors import FhirError
@@ -34,12 +36,12 @@ def main() -> int:
         options = {"guideline_question": args.guideline_question} if args.guideline_question is not None else {}
         summary = asyncio.run(investigate_patient(args.patient_id, **options))
     except (
-        InvalidPatientIdError, PatientNotFoundError, FhirError,
+        InvalidPatientIdError, PatientNotFoundError, PatientAccessDeniedError, FhirError,
         AgentDemoError, SummaryEvidenceError,
     ) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
-    except ValidationError:
+    except (ValidationError, SettingsError):
         print("Error: check configuration, including OPENAI_MODEL and OPENAI_API_KEY.", file=sys.stderr)
         return 1
     except OpenAIError as error:

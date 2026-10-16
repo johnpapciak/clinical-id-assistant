@@ -2,7 +2,9 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import TypeVar
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel
+
+from infectious_disease_assistant.authorization import InvalidPatientIdError, authorize_patient
 
 from infectious_disease_assistant.fhir import models as fhir
 from infectious_disease_assistant.fhir import parsing
@@ -11,16 +13,11 @@ from infectious_disease_assistant.fhir.constants import HISTORY_SYSTEM, LAB_CATE
 from infectious_disease_assistant.fhir.errors import FhirParseError
 from infectious_disease_assistant.models.patient import (
     Allergy, Diagnosis, Encounter, LabResult, Medication, MicrobiologyResult, PatientContextInfo,
-    PatientId, PatientSummary, PreviousInfection,
+    PatientSummary, PreviousInfection,
 )
 
 RECENT_LAB_LOOKBACK_DAYS = 30
-_patient_id_adapter = TypeAdapter(PatientId)
 T = TypeVar("T", bound=BaseModel)
-
-
-class InvalidPatientIdError(ValueError):
-    """The patient ID does not match PATIENT_ followed by three digits."""
 
 
 class PatientNotFoundError(LookupError):
@@ -29,10 +26,7 @@ class PatientNotFoundError(LookupError):
 
 @contextmanager
 def _patient_client(patient_id: str):
-    try:
-        validated_id = _patient_id_adapter.validate_python(patient_id, strict=True)
-    except ValidationError as error:
-        raise InvalidPatientIdError("Patient ID must match PATIENT_ followed by three digits") from error
+    validated_id = authorize_patient(patient_id)
     with FhirClient() as client:
         matches = client.search("Patient", {"identifier": f"{PATIENT_IDENTIFIER_SYSTEM}|{validated_id}"})
         if not matches:

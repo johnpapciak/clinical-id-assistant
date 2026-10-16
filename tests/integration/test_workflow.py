@@ -87,6 +87,29 @@ def test_http_agent_review_persists_across_app_instances(workflow_settings,agent
                'task_id':approved.json()['followup_task']['task_id'],'action':'create_followup_task','simulated':True})
 
 
+def test_assignment_filtering_precedes_pending_limit_and_blocks_review(workflow_settings, pending, make_clinical_summary, sdk_traces):
+    from infectious_disease_assistant.current_user import get_current_user
+    store = WorkflowStore(workflow_settings)
+    summary = make_clinical_summary('PATIENT_002', ['get_microbiology_results'])
+    run = AgentRunRecord(trace_id='trace_'+uuid4().hex, started_at=utc_now())
+    key = store.begin(InvestigationRequest(patient_id='PATIENT_002', microbiology_result_id='MICRO_002_RECENT'), run)
+    run.status, run.completed_at = 'succeeded', utc_now()
+    store.complete(key, summary, run, [])
+    app = create_app(store)
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        reviewer_id='REVIEWER_002', assigned_patient_ids={'PATIENT_002'},
+    )
+    with TestClient(app) as client:
+        rows = client.get('/investigations/pending-review?limit=1')
+        assert rows.status_code == 200
+        assert [row['investigation_id'] for row in rows.json()] == [str(key)]
+        assert client.get(f'/investigations/{key}').status_code == 200
+        assert client.get(f'/investigations/{pending.investigation_id}').status_code == 403
+        assert client.post(f'/investigations/{pending.investigation_id}/approve', json={}).status_code == 403
+        assert client.post(f'/investigations/{pending.investigation_id}/reject', json={'note':'Not assigned'}).status_code == 403
+    assert store.get(pending.investigation_id).approval is None
+
+
 def test_concurrent_approvals_execute_one_task(workflow_settings,pending):
     user=CurrentUser(reviewer_id='REVIEWER_001'); barrier=Barrier(4)
     def approve():

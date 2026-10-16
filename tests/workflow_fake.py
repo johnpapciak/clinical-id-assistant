@@ -24,8 +24,16 @@ class FakeWorkflowStore:
             raise WorkflowNotFoundError()
         return self.records[key].model_copy(deep=True)
 
-    def pending(self, limit=50):
-        return [row.model_copy(deep=True) for row in self.records.values() if row.status == 'awaiting_review'][:limit]
+    def patient_id_for(self, key):
+        if key not in self.records:
+            raise WorkflowNotFoundError()
+        return self.records[key].patient_id
+
+    def pending(self, limit=50, *, patient_ids=None):
+        if not 1 <= limit <= 100:
+            raise ValueError('Pending review limit must be between 1 and 100')
+        return [row.model_copy(deep=True) for row in self.records.values() if row.status == 'awaiting_review'
+                and (patient_ids is None or row.patient_id in patient_ids)][:limit]
 
     def save_audit(self, run, events):
         row = next(row for row in self.records.values() if row.agent_run.agent_run_id == run.agent_run_id)

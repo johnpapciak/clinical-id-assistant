@@ -176,7 +176,15 @@ cat /tmp/investigation.jsonl
 
 Open the emitted link, or find the trace ID in the
 [OpenAI Traces dashboard](https://platform.openai.com/traces) in the project used
-by your API key. The workflow is named **Synthetic infectious-disease investigation**:
+by your API key. The workflow is named **Synthetic infectious-disease investigation**.
+Default spans show high-level calls and timing, without clinical payloads.
+To inspect detailed synthetic data, explicitly opt in before running the CLI:
+
+```sh
+export IDA_TRACE_INCLUDE_PAYLOADS=true
+```
+
+With this option enabled:
 
 - Model/response spans show model calls and their inputs and outputs.
 - Function spans show tool names, JSON arguments, and returned JSON records.
@@ -186,9 +194,11 @@ by your API key. The workflow is named **Synthetic infectious-disease investigat
   patient-tool results.
 - The `validated_clinical_summary` SDK span contains the final validated JSON.
 
-This development workflow enables response storage and detailed trace payloads,
-which intentionally include synthetic clinical data. Application logs contain
-only event names, synthetic patient IDs, trace IDs/links, tool names, record
+Detailed traces intentionally include synthetic clinical data. Provider response
+storage defaults to false; `IDA_STORE_MODEL_RESPONSES=true` explicitly enables it
+independently of trace payloads. These settings do not establish provider retention
+guarantees. Application logs contain only event names, synthetic patient/reviewer
+IDs, access operations, trace IDs/links, tool names, record
 counts, durations, and error types. They do not contain tool arguments/results,
 clinical summaries, or API keys. Failures before patient/configuration validation
 have application logs but no remote trace.
@@ -417,8 +427,8 @@ sanitized exception class names and any completed tool events; unfinished tool
 calls are marked `interrupted` when the application handles a failure. A hard
 process crash can leave `running` records for inspection; no automatic recovery
 worker is added. Configuration fields remain null if configuration never validates.
-Detailed model/tool payloads remain available through the existing SDK traces,
-linked by `agent_run.trace_id`; this database audit is not a custom trace system.
+Detailed model/tool payloads are available through SDK traces only when explicitly
+enabled, linked by `agent_run.trace_id`; the database audit is separate.
 
 The agent may populate `summary.proposed_action` with a `create_followup_task`
 proposal containing `title` and `description`. It has no execution tool. A summary
@@ -452,7 +462,8 @@ Review endpoints resolve `CurrentUser` through the separate `get_current_user`
 dependency. `IDA_CURRENT_USER_ID=REVIEWER_001` is a server-configured local demo
 identity, **not authentication** or proof of a human's identity. Request bodies and
 headers cannot select a different reviewer. Replace this dependency with real
-authentication/authorization in a later milestone; no hospital auth is implemented.
+verified authentication in a later milestone. Assignment authorization already
+applies to all investigation endpoints; no hospital authentication is implemented.
 
 A row lock serializes decisions for an investigation. The decision, simulated
 task insertion, and terminal status update commit in one transaction. Unique
@@ -492,6 +503,28 @@ separate disposable `IDA_TEST_DATABASE_URL` described above and run:
 python -m pytest -m integration tests/integration -q
 ```
 
+## Development patient authorization
+
+The API, deterministic services, and agent tools enforce synthetic patient
+assignments. The default process identity is `REVIEWER_001`, assigned only
+`PATIENT_001`. Configure the server or CLI environment to change assignments:
+
+```sh
+export IDA_CURRENT_USER_ID=REVIEWER_002
+export IDA_PATIENT_ASSIGNMENTS='{"REVIEWER_001":["PATIENT_001"],"REVIEWER_002":["PATIENT_002","PATIENT_003"]}'
+python -m infectious_disease_assistant PATIENT_002
+```
+
+Unassigned access returns 403 from the API and fails before FHIR retrieval. An
+unknown reviewer has no patient access. The same assignments protect investigation
+history, pending review, and approval/rejection; the pending limit applies after
+filtering. Headers and request bodies cannot select an identity or supply grants.
+This is a server-selected development identity, not authentication. The FastAPI
+`get_current_user` dependency can later resolve a verified identity.
+
+This demo is not HIPAA-certified. No real PHI should be used. See
+[SECURITY.md](SECURITY.md) for the illustrated controls and deployment limitations.
+
 ## Safety evaluation
 
 Run the 20-case deterministic suite without API credentials, a running FHIR
@@ -522,6 +555,10 @@ configured FHIR/RAG tools, with normal SDK tracing. It can incur model and
 embedding API usage. Five additional cases inject unsafe candidates directly at
 the final-output safety boundary in both modes; they test rejection, rather than
 whether a model spontaneously produces unsafe claims.
+Live clinical cases honor the configured user's assignments; to evaluate all five
+patients, explicitly assign that user `PATIENT_001` through `PATIENT_005`.
+Scripted mode uses a fixture-only principal within its mock transport and cannot
+grant access to a live endpoint.
 
 The console reports pass counts, blocked attacks, failure categories, and median/
 p95 clinical pipeline latency. JSON includes per-case checks, actual tool names

@@ -71,12 +71,23 @@ class WorkflowStore:
         with self.connection() as connection:
             return self._load(connection, investigation_id)
 
-    def pending(self, limit: int = 50) -> list[InvestigationResponse]:
+    def patient_id_for(self, investigation_id: UUID) -> str:
+        with self.connection() as connection:
+            row = connection.execute("SELECT patient_id FROM ida_investigations WHERE investigation_id = %s",
+                                     (investigation_id,)).fetchone()
+            if row is None:
+                raise WorkflowNotFoundError("Investigation not found")
+            return row["patient_id"]
+
+    def pending(self, limit: int = 50, *, patient_ids: frozenset[str] | None = None) -> list[InvestigationResponse]:
         if not 1 <= limit <= 100:
             raise ValueError("Pending review limit must be between 1 and 100")
         with self.connection() as connection:
             rows = connection.execute("""SELECT investigation_id FROM ida_investigations
-                WHERE status = 'awaiting_review' ORDER BY created_at, investigation_id LIMIT %s FOR SHARE""", (limit,)).fetchall()
+                WHERE status = 'awaiting_review' AND (%s::text[] IS NULL OR patient_id = ANY(%s::text[]))
+                ORDER BY created_at, investigation_id LIMIT %s FOR SHARE""",
+                (None if patient_ids is None else sorted(patient_ids),
+                 None if patient_ids is None else sorted(patient_ids), limit)).fetchall()
             return [self._load(connection, row["investigation_id"]) for row in rows]
 
     def begin(self, request: InvestigationRequest, run: AgentRunRecord) -> UUID:

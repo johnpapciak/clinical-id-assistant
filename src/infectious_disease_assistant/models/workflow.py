@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, Field, StringConstraints
+from pydantic import AwareDatetime, ConfigDict, Field, StringConstraints
 
 from infectious_disease_assistant.models.patient import HealthcareModel, PatientId
 
@@ -16,7 +16,10 @@ class FollowupAction(HealthcareModel):
 
 
 class CurrentUser(HealthcareModel):
+    model_config = ConfigDict(frozen=True)
+
     reviewer_id: ReviewerId
+    assigned_patient_ids: frozenset[PatientId] = frozenset()
 
 
 class ApproveRequest(HealthcareModel):

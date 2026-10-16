@@ -7,6 +7,9 @@ from agents.exceptions import AgentsException
 from openai import OpenAIError
 from pydantic import ValidationError
 
+from infectious_disease_assistant.authorization import (
+    PatientAccessDeniedError, access_user, authorization_scope, authorize_patient, security_event,
+)
 from infectious_disease_assistant.guardrails import validate_safe_presentation
 from infectious_disease_assistant.agent import AgentDemoError, investigate_patient
 from infectious_disease_assistant.fhir.errors import FhirError
@@ -58,6 +61,7 @@ class InvestigationService:
         investigation_id = None
         audit = RunAudit(AgentRunRecord(trace_id=gen_trace_id(), started_at=utc_now()), self.store.save_audit)
         try:
+            authorize_patient(request.patient_id, operation="investigation_create")
             cultures = await asyncio.to_thread(patients.get_microbiology_results, request.patient_id)
             target = next((item for item in cultures if item.result_id == request.microbiology_result_id), None)
             if target is None:
@@ -73,7 +77,9 @@ class InvestigationService:
                 raise InvestigationSummaryError()
             validate_safe_presentation(summary)
             audit.finish()
-            return await asyncio.to_thread(self.store.complete, investigation_id, summary, audit.run, audit.events)
+            result = await asyncio.to_thread(self.store.complete, investigation_id, summary, audit.run, audit.events)
+            security_event("investigation_created", user=access_user(), patient_id=request.patient_id, operation="investigation_create")
+            return result
         except (patients.PatientNotFoundError, MicrobiologyResultNotFoundError):
             raise
         except Exception as error:
@@ -85,6 +91,8 @@ class InvestigationService:
                     LOGGER.error("investigation_audit_unavailable")
             if isinstance(error, InvestigationError):
                 raise
+            if isinstance(error, PatientAccessDeniedError) or isinstance(error.__cause__, PatientAccessDeniedError):
+                raise PatientAccessDeniedError() from None
             LOGGER.error("investigation_request_failed", extra={"event_fields": {"error_type": type(error).__name__}})
             if isinstance(error, (FhirError, RagError, OpenAIError, ValidationError, WorkflowDatabaseError)):
                 raise InvestigationUnavailableError() from None
@@ -98,6 +106,7 @@ class InvestigationService:
 
     def get(self, investigation_id: UUID) -> InvestigationResponse:
         try:
+            authorize_patient(self.store.patient_id_for(investigation_id), operation="investigation_read")
             return self.store.get(investigation_id)
         except WorkflowNotFoundError:
             raise InvestigationNotFoundError() from None
@@ -106,7 +115,10 @@ class InvestigationService:
 
     def pending(self, limit: int = 50) -> list[InvestigationResponse]:
         try:
-            return self.store.pending(limit)
+            user = access_user()
+            result = self.store.pending(limit, patient_ids=user.assigned_patient_ids)
+            security_event("pending_review_listed", user=user, operation="pending_review_list")
+            return result
         except WorkflowDatabaseError:
             raise InvestigationUnavailableError() from None
 
@@ -118,7 +130,12 @@ class InvestigationService:
 
     def _review(self, investigation_id: UUID, user: CurrentUser, **options) -> InvestigationResponse:
         try:
-            return self.store.review(investigation_id, user, **options)
+            with authorization_scope(user):
+                authorize_patient(self.store.patient_id_for(investigation_id), operation="investigation_review")
+                result = self.store.review(investigation_id, user, **options)
+                security_event("review_decision_recorded", user=user, patient_id=result.patient_id,
+                               operation=result.approval.decision)
+                return result
         except WorkflowNotFoundError:
             raise InvestigationNotFoundError() from None
         except WorkflowDatabaseError:

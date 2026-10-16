@@ -11,8 +11,11 @@ from agents.usage import Usage
 from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage, ResponseOutputText
 from pydantic import Field, JsonValue
 
+from infectious_disease_assistant.authorization import authorization_scope
+from infectious_disease_assistant.fhir.constants import PATIENT_IDENTIFIER_SYSTEM
 from infectious_disease_assistant.fhir.server import handle_request, load_fixtures
 from infectious_disease_assistant.models.patient import HealthcareModel
+from infectious_disease_assistant.models.workflow import CurrentUser
 from infectious_disease_assistant.rag.models import GuidelineMatch
 from infectious_disease_assistant.services import patients
 
@@ -59,13 +62,17 @@ class ScriptedModel(Model):
 @contextmanager
 def synthetic_transport(data_dir: Path, replay: ReplayCase):
     fixtures = load_fixtures(data_dir / 'fhir' / 'bundle.json')
+    fixture_user = CurrentUser(reviewer_id='REVIEWER_001', assigned_patient_ids={
+        identifier['value'] for resource in fixtures.resources.values() if resource['resourceType'] == 'Patient'
+        for identifier in resource.get('identifier', []) if identifier['system'] == PATIENT_IDENTIFIER_SYSTEM
+    })
     def respond(request):
         status, payload = handle_request(fixtures, request.method, request.url.path,
                                          parse_qs(request.url.query.decode(), keep_blank_values=True))
         return httpx.Response(status, json=payload)
     def client():
         return httpx.Client(base_url='http://127.0.0.1:8765/fhir/', transport=httpx.MockTransport(respond))
-    with patch('infectious_disease_assistant.fhir.client.create_http_client', client), patch(
+    with authorization_scope(fixture_user), patch('infectious_disease_assistant.fhir.client.create_http_client', client), patch(
         'infectious_disease_assistant.tools.guideline_tools.service.search_guidelines',
         return_value=replay.guideline_matches,
     ):
