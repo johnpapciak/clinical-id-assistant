@@ -1,1 +1,1 @@
-"""Educational infectious-disease workflows using synthetic data only."""
+"""Infectious-disease workflow demo using synthetic data only."""

@@ -90,3 +90,13 @@ def test_module_help_needs_no_api_credentials(agent_model, monkeypatch, tmp_path
     assert result.returncode == 0
     assert "patient_id" in result.stdout
     assert result.stderr == ""
+
+
+def test_cli_passes_optional_guideline_question(agent_model, monkeypatch, capsys, make_clinical_summary):
+    from unittest.mock import AsyncMock
+    investigate = AsyncMock(return_value=make_clinical_summary())
+    monkeypatch.setattr("infectious_disease_assistant.agent_demo.investigate_patient", investigate)
+    monkeypatch.setattr("sys.argv", ["agent_demo", "PATIENT_001", "--guideline-question", "What renal context is missing?"])
+    assert agent_demo.main() == 0
+    investigate.assert_awaited_once_with("PATIENT_001", guideline_question="What renal context is missing?")
+    assert '"guideline_sources": []' in capsys.readouterr().out

@@ -1,0 +1,19 @@
+services:
+  guidelines-db:
+    image: pgvector/pgvector:0.8.7-pg17
+    environment:
+      POSTGRES_DB: ida_guidelines
+      POSTGRES_USER: ida_demo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - guidelines-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ida_demo -d ida_guidelines"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  guidelines-postgres:

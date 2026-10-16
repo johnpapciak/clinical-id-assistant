@@ -131,3 +131,50 @@ def make_clinical_summary():
         )
 
     return make
+
+
+@pytest.fixture
+def rag_settings():
+    from infectious_disease_assistant.config import RagSettings
+    return RagSettings(
+        _env_file=None, DATABASE_URL="postgresql://demo:synthetic-test-only@127.0.0.1:5433/unused",
+        OPENAI_EMBEDDING_MODEL="test-embedding", embedding_dimensions=3,
+        chunk_words=40, chunk_overlap=5, data_dir=DATA_DIR,
+    )
+
+
+@pytest.fixture
+def test_embedder():
+    class TestEmbeddings:
+        model = "test-embedding"
+        dimensions = 3
+
+        def __init__(self):
+            self.calls = []
+
+        def embed(self, texts):
+            self.calls.append(list(texts))
+            vectors = []
+            for text in texts:
+                text = text.lower()
+                if "creatinine" in text or "renal" in text:
+                    vectors.append([1.0, 0.1, 0.1])
+                elif "urine" in text or "culture" in text:
+                    vectors.append([0.1, 1.0, 0.1])
+                else:
+                    vectors.append([0.1, 0.1, 1.0])
+            return vectors
+    return TestEmbeddings()
+
+
+@pytest.fixture
+def guideline_match():
+    from infectious_disease_assistant.rag.models import GuidelineMatch
+    return GuidelineMatch(
+        document_id="synthetic-renal-context-v1", title="Synthetic renal context",
+        source="Project-authored synthetic guideline", license="CC0-1.0",
+        content_sha256="a" * 64, chunk_id="b" * 64,
+        section="Creatinine review", chunk_index=0,
+        text="Preserve creatinine value, unit, date, and flag; identify missing baseline context.",
+        distance=0.1, similarity=0.9,
+    )

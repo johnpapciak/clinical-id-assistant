@@ -1,8 +1,9 @@
 # infectious-disease-assistant
 
-An educational Python project demonstrating an agentic infectious-disease workflow
-using only synthetic patient data. Never use real protected health information
-(PHI). This project is for learning, not clinical use.
+A Python demo of an agentic infectious-disease workflow using synthetic patient
+data and project-authored synthetic guideline context. No real protected health
+information (PHI) is used or permitted. Output supports human review, not clinical
+treatment decisions.
 
 ## Getting started
 
@@ -35,8 +36,8 @@ from infectious_disease_assistant.config import Settings
 settings = Settings()
 ```
 
-`IDA_DATA_DIR` defaults to `data` and is used only by the local FHIR service to
-load `fhir/bundle.json`. The application uses `IDA_FHIR_BASE_URL`, defaulting to
+`IDA_DATA_DIR` defaults to `data`. The local FHIR service loads
+`fhir/bundle.json`; guideline ingestion loads `guidelines/manifest.json`. The application uses `IDA_FHIR_BASE_URL`, defaulting to
 `http://127.0.0.1:8765/fhir`. Only loopback HTTP endpoints are accepted. Metadata
 must declare synthetic-only data and FHIR R4 version `4.0.1`. These markers and
 schema checks cannot detect PHI; only add deliberately fabricated fixtures.
@@ -124,8 +125,8 @@ python -m infectious_disease_assistant.agent_demo PATIENT_004
 
 This command makes live OpenAI API calls. It validates the patient through the local FHIR API, then
 sends only a synthetic patient ID and a new-microbiology-result notification.
-The model chooses which of the five tools to call. Each tool is bound to the
-selected patient through local SDK context; the model cannot select another ID.
+The model chooses among five patient tools and optional `search_guidelines`.
+Each patient tool is bound to the selected patient through local SDK context; the model cannot select another ID.
 Tool results include the patient ID, dataset reference date, and JSON records
 serialized from the deterministic service models. Preflight retrieves only
 patient context, and subsequent tool calls retrieve only their resource sections.
@@ -139,7 +140,8 @@ until it produces a final summary or reaches the eight-turn limit.
 The final result is a Pydantic `ClinicalSummary`, printed as JSON on stdout. It
 includes the newest microbiology result's ID, organism and specimen, relevant
 typed medication/allergy/lab/infection records, cited findings, missing context,
-clinician-review items, evidence sources, and a fixed decision-support disclaimer.
+clinician-review items, evidence sources, used guideline citations, and a fixed
+decision-support disclaimer.
 Missing scalar information is `null`; missing collections are empty lists.
 
 Python verifies patient identity, the newest culture fields, exact membership of
@@ -169,8 +171,10 @@ by your API key. The workflow is named **Synthetic infectious-disease investigat
 
 - Model/response spans show model calls and their inputs and outputs.
 - Function spans show tool names, JSON arguments, and returned JSON records.
-  Arguments are `{}` because patient selection comes from local SDK context;
-  patient identity appears in trace metadata and tool results.
+  Patient-tool arguments are `{}` because patient selection comes from local SDK
+  context. Guideline calls show `query` and `top_k` arguments and retrieved text,
+  distances, and source metadata. Patient identity appears in trace metadata and
+  patient-tool results.
 - The `validated_clinical_summary` SDK span contains the final validated JSON.
 
 This development workflow enables response storage and detailed trace payloads,
@@ -186,16 +190,120 @@ check SDK export errors if a trace does not appear. Ensure the shell variable
 project supports tracing. No custom exporter or tracing backend is installed.
 See the [SDK tracing documentation](https://openai.github.io/openai-agents-python/tracing/).
 
-`python -m pytest` needs no API credentials and makes no live model or trace
-requests. Tests mock network responses while exercising the actual SDK runner,
-structured-output parser, and native spans through a test-only in-memory processor.
+`python -m pytest` needs no API credentials or running database and makes no
+live model, embedding, or trace requests. PostgreSQL integration tests skip unless
+`IDA_TEST_DATABASE_URL` is explicitly set. Tests mock network responses while
+exercising the actual SDK runner, structured-output parser, and native spans through a test-only in-memory processor.
+
+## Guideline RAG: start PostgreSQL and ingest
+
+Requires Docker with Compose. Three small, project-authored synthetic review
+checklists are dedicated to CC0-1.0; provenance and scope are in
+[data/guidelines/README.md](data/guidelines/README.md). They are demo retrieval
+material, not validated clinical guidelines. No proprietary documents are used.
+
+In your ignored `.env`, set `POSTGRES_PASSWORD` to a new local password and set
+`DATABASE_URL` to `postgresql://ida_demo:<password>@127.0.0.1:5433/ida_guidelines`.
+Replace `<password>` and URL-encode reserved characters. Set `OPENAI_API_KEY` for
+embeddings; `OPENAI_MODEL` is needed only for agent investigations. Do not commit
+these values. Compose reads `.env`; Python settings read it without shell exports.
+
+```sh
+docker compose up -d --wait guidelines-db
+python -m infectious_disease_assistant.rag init
+python -m infectious_disease_assistant.rag ingest
+python -m infectious_disease_assistant.rag search \
+  "E. coli urine culture interpretation and missing symptoms" --top-k 3
+```
+
+The database binds only to `127.0.0.1:5433` and persists in a named Docker volume.
+`docker compose stop` stops it while retaining data. The initialization command
+applies packaged, numbered SQL migrations with recorded checksums. Add a new
+migration for later schema changes; do not edit one already applied. Initialization
+needs extension/schema creation privileges and makes no OpenAI request.
+
+Ingestion reads only the manifest's UTF-8 Markdown files, extracts headings and
+body text, normalizes whitespace, chunks within sections, requests embeddings,
+and stores documents, chunks, and vectors in PostgreSQL. `IDA_CHUNK_WORDS=120`
+and `IDA_CHUNK_OVERLAP=20` control word windows. Re-ingestion atomically replaces
+the listed documents and their chunks; unchanged inputs produce stable chunk IDs
+without duplicates. Documents removed from the manifest are not automatically
+deleted from the database.
+
+`OPENAI_EMBEDDING_MODEL=text-embedding-3-small` and
+`IDA_EMBEDDING_DIMENSIONS=1536` configure both ingestion and query embeddings.
+Choose a model supporting the dimensions parameter. After changing the model or
+dimensions, re-ingest: search excludes incompatible stored profiles. Embedding
+calls use the existing environment API key and incur API usage. Ordinary patient
+lookups and agent runs that never request RAG do not load RAG configuration.
+
+`search_guidelines(query, top_k=3)` in `rag/service.py` validates a nonempty query
+and `top_k` from 1 to 10, embeds the query, and runs pgvector cosine distance
+(`<=>`) search. This small corpus uses exact nearest-neighbor search without an
+approximate index. Each result includes text, document ID, title, source, license,
+content hash, section, chunk index/ID, distance (lower is closer), and similarity
+(`1 - distance`). These are ranking scores, not clinical confidence. No matches
+return `[]`; configuration, embedding, and database failures abort predictably.
+
+## Investigate with FHIR and optional guideline context
+
+Keep the synthetic FHIR service and database running, ingest the corpus, and set
+both `OPENAI_MODEL` and `OPENAI_API_KEY`. For a case with E. coli urine culture,
+an active antibiotic, an allergy, and elevated creatinine:
+
+```sh
+python -m infectious_disease_assistant.agent_demo PATIENT_001 \
+  --guideline-question "What urine culture and renal laboratory review context is missing?"
+```
+
+The question adds review context; tool selection remains the model's choice.
+The agent starts with microbiology, may inspect medications/allergies/labs or
+history, and may call `search_guidelines` when relevant. Check the SDK trace's
+function spans for both patient tools and `search_guidelines`; choices can vary
+between runs. Patient details should not appear in guideline query arguments.
+
+`ClinicalSummary.guideline_sources` contains exact source metadata for guideline
+chunks used in `important_findings`. Python checks those citations against actual
+tool results. Guideline evidence uses stable indices into the RAG tool's cumulative
+`records` list across searches. Retrieved but unused chunks need no final citation.
+Guideline context cannot supply patient facts or authorize diagnosis, prescribing,
+or medication changes. Free-text relevance still requires human review.
+
+## Tests and PostgreSQL integration
+
+```sh
+python -m pytest
+```
+
+Offline tests cover extraction/chunking, ingestion, embedding validation and
+failures, SQL persistence parameters, retrieval, provenance, tool formatting,
+citation validation, and a mocked SDK run combining FHIR and RAG. External APIs
+are mocked. Unit tests do not assess embedding relevance on real clinical tasks.
+
+To exercise actual PostgreSQL transactions, migrations, persisted vectors,
+pgvector ranking, embedding-profile filtering, and rollback, point
+`IDA_TEST_DATABASE_URL` at a **separate disposable** pgvector database. For example,
+create `ida_guidelines_test` in the local container:
+
+```sh
+docker compose exec guidelines-db createdb -U ida_demo ida_guidelines_test
+# Set IDA_TEST_DATABASE_URL in your shell to the same connection URL,
+# with database name ida_guidelines_test, then run:
+python -m pytest -m integration tests/integration -q
+```
+
+Integration tests use temporary schemas and remove only their own schemas. The
+test role needs schema/extension creation privileges. These tests use deterministic
+test-only vectors and make no embedding/model API calls; they verify PostgreSQL
+and pgvector behavior independently of embedding quality. `.env` alone does not
+opt tests in: export `IDA_TEST_DATABASE_URL` explicitly.
 
 ## Architecture and scope
 
 The package uses a `src/` layout. `fhir/client.py` handles HTTP reads/searches;
 `fhir/models.py` and `fhir/parsing.py` validate and map the supported R4 subset;
 `services/` selects relevant typed domain records. `tools/patient_tools.py` keeps
-the existing agent tool names. `fhir/server.py` is the only runtime fixture reader,
+the existing agent tool names. `fhir/server.py` is the only patient fixture reader,
 backed by the five-patient `data/fhir/bundle.json` collection. Domain retrieval
 has no agent framework dependency. Tests use `httpx.MockTransport` and require
 neither a running FHIR service nor live model access.
@@ -205,5 +313,6 @@ controlled tools with the OpenAI Agents SDK, consults synthetic FHIR data and RA
 and produces a structured summary for human approval before any simulated action.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 
-This milestone replaces direct custom JSON access with a synthetic FHIR HTTP
-adapter. Databases, RAG, FastAPI, multiple agents, and a frontend remain deferred.
+The current implementation includes local synthetic FHIR retrieval, PostgreSQL/
+pgvector RAG, and one agent with structured output and SDK tracing. FastAPI,
+multiple agents, a frontend, and approval/action execution remain future work.
