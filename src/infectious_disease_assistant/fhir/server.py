@@ -128,7 +128,7 @@ def handle_request(store: FixtureStore, method: str, path: str, query: dict[str,
                  "entry": [{"resource": item} for item in resources]}
 
 
-def make_server(store: FixtureStore, port: int = 8765) -> ThreadingHTTPServer:
+def make_server(store: FixtureStore, port: int = 8765, host: str = "127.0.0.1") -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def respond(self):
             parsed = urlsplit(self.path)
@@ -149,16 +149,19 @@ def make_server(store: FixtureStore, port: int = 8765) -> ThreadingHTTPServer:
         def log_message(self, format, *args):
             pass
 
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    if host not in {"127.0.0.1", "0.0.0.0"}:
+        raise ValueError("Unsupported synthetic FHIR bind address")
+    return ThreadingHTTPServer((host, port), Handler)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Serve read-only synthetic FHIR R4 fixtures on loopback.")
+    parser = argparse.ArgumentParser(description="Serve read-only synthetic FHIR R4 fixtures.")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--host", choices=["127.0.0.1", "0.0.0.0"], default="127.0.0.1")
     args = parser.parse_args()
     try:
-        with make_server(load_fixtures(), args.port) as server:
-            print(f"Synthetic FHIR R4 endpoint: http://127.0.0.1:{server.server_port}/fhir", flush=True)
+        with make_server(load_fixtures(), args.port, args.host) as server:
+            print(f"Synthetic FHIR R4 endpoint: http://{args.host}:{server.server_port}/fhir", flush=True)
             server.serve_forever()
     except KeyboardInterrupt:
         return 0

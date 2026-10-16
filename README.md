@@ -7,6 +7,125 @@ treatment decisions.
 
 ## Getting started
 
+### Complete local stack with Docker
+
+Requires Docker Engine/Desktop with Compose v2. From a new checkout:
+
+```sh
+git clone https://github.com/johnpapciak/clinical-id-assistant.git
+cd clinical-id-assistant
+cp .env.example .env
+```
+
+Edit the ignored `.env`: set `POSTGRES_PASSWORD` to a new local password, and
+set `OPENAI_API_KEY` and `OPENAI_MODEL` for agent/embedding calls. No credentials
+are built into images. Then start the stack:
+
+```sh
+docker compose up --build
+```
+
+Alternatively, use `docker compose up --build -d --wait` to wait for healthy
+services in the background. Compose runs the API, synthetic FHIR server,
+PostgreSQL/pgvector, and a one-shot `migrate` service that initializes both
+checksummed migration sets. No separate schema initialization is needed on a
+fresh volume. Initialization runs safely again when the migration service runs.
+Fixtures and project-authored guideline documents are bundled in the image;
+the read-only FHIR service loads the same five patients every start.
+
+The API waits for successful migrations, healthy PostgreSQL, and healthy FHIR,
+then checks connectivity with bounded retries. Configure `IDA_STARTUP_ATTEMPTS`
+and `IDA_STARTUP_DELAY_SECONDS` to change the startup retry budget. Inspect a
+failed migration with `docker compose logs migrate`; the API does not start
+after failed migrations.
+
+Guideline embeddings require an explicit initialization command, which makes
+OpenAI embedding calls and is safe to repeat:
+
+```sh
+docker compose run --rm api python -m infectious_disease_assistant.rag ingest
+docker compose run --rm api python -m infectious_disease_assistant.rag search \
+  "urine culture review and allergy context" --top-k 3
+```
+
+Without an API key the stack can still start for deterministic FHIR/health
+checks, but agent investigations and guideline ingestion require credentials.
+An empty guideline table is not a populated knowledge base. Check the stack:
+
+```sh
+docker compose ps -a
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8765/fhir/metadata
+docker compose run --rm api check
+docker compose exec guidelines-db psql -U ida_demo -d ida_guidelines \
+  -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+```
+
+The health endpoint is liveness; `api check` additionally checks FHIR metadata,
+PostgreSQL, pgvector, and migrated tables. Run an investigation and review it:
+
+```sh
+curl -i -X POST http://127.0.0.1:8000/investigations \
+  -H 'Content-Type: application/json' \
+  -d '{"patient_id":"PATIENT_001","microbiology_result_id":"MICRO_001_RECENT"}'
+curl http://127.0.0.1:8000/investigations/pending-review
+curl -X POST "http://127.0.0.1:8000/investigations/<investigation_id>/approve" \
+  -H 'Content-Type: application/json' -d '{"note":"Reviewed synthetic case."}'
+```
+
+Replace `<investigation_id>` with the UUID from the POST response. The initial
+response is `awaiting_review`. An approved proposed task becomes a simulated
+follow-up task; no medication or real EHR action occurs. The agent chooses when
+to call RAG; ingestion does not force retrieval for every case. For an explicit
+review topic through the independent CLI:
+
+```sh
+docker compose run --rm api python -m infectious_disease_assistant.agent_demo \
+  PATIENT_001 --guideline-question "urine culture review and allergy context"
+docker compose run --rm api python -m infectious_disease_assistant PATIENT_001
+docker compose run --rm api python -m infectious_disease_assistant.evals.run --output /tmp/evaluation.json
+```
+
+One-off commands use `docker compose run`, so the entrypoint supplies the internal
+database URL and Docker DNS configuration. They inherit the same patient
+assignments as the API. The container uses `guidelines-db:5432` and
+`synthetic-fhir:8765`; a host `DATABASE_URL` in `.env` is intentionally not passed
+into containers. Passwords are URL-encoded by Python. Published ports bind only
+to host loopback: API 8000, FHIR 8765, PostgreSQL 5433. Avoid running host servers
+on these ports at the same time. Set `IDA_API_PORT`, `IDA_FHIR_PORT`, or
+`IDA_POSTGRES_PORT` in `.env` to change a published host port, and adjust host
+URLs accordingly. Internal service ports stay fixed. Changes to code or bundled fixtures require
+rebuilding; there is no host source mount.
+
+```sh
+docker compose down
+```
+
+This stops/removes containers and the network while retaining the PostgreSQL
+volume (including workflow history and embeddings). To rerun migrations manually:
+
+```sh
+docker compose run --rm migrate
+```
+
+Python containers run as UID 10001 with read-only filesystems, a temporary `/tmp`,
+dropped capabilities, and no added privileges. `.dockerignore` uses an allowlist
+to exclude `.env`, Git history, virtual environments, tests, keys, and reports.
+The image pins its Python base digest and installs only hash-locked runtime
+dependencies from `requirements.lock`; build tools stay in the builder stage.
+Refresh the runtime lock deliberately with the command in its header and rerun
+tests/build verification. A network requiring a custom CA can pass a public CA
+bundle as the optional BuildKit `proxy_ca` secret; it is mounted only while pip
+runs and is not copied into the image. Keep TLS verification enabled.
+
+```sh
+docker build --secret id=proxy_ca,src=/path/to/trusted-ca-bundle.pem \
+  -t infectious-disease-assistant:local .
+docker compose up --no-build -d --wait
+```
+
+### Run Python directly
+
 Requires Python 3.11 or newer. From the repository root:
 
 ```sh
@@ -38,7 +157,10 @@ settings = Settings()
 
 `IDA_DATA_DIR` defaults to `data`. The local FHIR service loads
 `fhir/bundle.json`; guideline ingestion loads `guidelines/manifest.json`. The application uses `IDA_FHIR_BASE_URL`, defaulting to
-`http://127.0.0.1:8765/fhir`. Only loopback HTTP endpoints are accepted. Metadata
+`http://127.0.0.1:8765/fhir`. Loopback HTTP endpoints are accepted by default.
+Compose alone enables the exact `http://synthetic-fhir:8765/fhir` service host
+through `IDA_FHIR_ALLOW_COMPOSE_HOST=true`; arbitrary remote FHIR hosts remain
+rejected. Metadata
 must declare synthetic-only data and FHIR R4 version `4.0.1`. These markers and
 schema checks cannot detect PHI; only add deliberately fabricated fixtures.
 

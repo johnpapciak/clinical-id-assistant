@@ -1,0 +1,15 @@
+*
+!Dockerfile
+!pyproject.toml
+!requirements.lock
+!README.md
+!src/
+!src/**
+!data/
+!data/**
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
