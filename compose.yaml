@@ -13,6 +13,28 @@ x-database: &database
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
 
 services:
+  ui:
+    <<: *python
+    image: infectious-disease-assistant-ui:local
+    build:
+      context: .
+      target: ui
+    environment:
+      IDA_UI_API_URL: http://api:8000
+      IDA_UI_TIMEOUT_SECONDS: ${IDA_UI_TIMEOUT_SECONDS:-180}
+    ports:
+      - "127.0.0.1:${IDA_UI_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8501/_stcore/health', timeout=3, trust_env=False).raise_for_status()"]
+      interval: 5s
+      timeout: 4s
+      retries: 15
+      start_period: 15s
+    restart: unless-stopped
+
   guidelines-db:
     image: pgvector/pgvector:0.8.7-pg17
     environment:

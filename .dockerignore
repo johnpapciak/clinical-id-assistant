@@ -2,11 +2,14 @@
 !Dockerfile
 !pyproject.toml
 !requirements.lock
+!requirements-ui.lock
 !README.md
 !src/
 !src/**
 !data/
 !data/**
+!ui/
+!ui/**
 **/__pycache__/
 **/*.py[cod]
 **/.env

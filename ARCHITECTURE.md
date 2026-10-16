@@ -10,6 +10,7 @@ simulated follow-up task.
 ```mermaid
 flowchart TD
     Lab["Synthetic lab result"] --> API["FastAPI"]
+    UI["Streamlit synthetic review UI"] -->|HTTP investigations and decisions| API
     API --> App["Python application"]
     App --> Coordinator["OpenAI Agents SDK coordinator"]
     Coordinator --> Tools["Controlled tools"]
@@ -35,6 +36,7 @@ approve a proposed action before a simulated downstream action can occur.
 - `models/investigation.py`: framework-independent investigation requests/responses and API error schemas.
 - `services/investigations.py`: event validation, coordinator orchestration, and persistent review workflow.
 - `api.py`: thin FastAPI investigation/review routes, HTTP errors, and lifespan.
+- `review_client.py` and `ui/app.py`: optional Streamlit client using typed HTTP API contracts; no agent or service imports.
 - `current_user.py`: explicit local demo identity dependency; replace with authentication later.
 - `authorization.py`: immutable principal scope, patient assignments, service checks, and access audit events.
 - `models/workflow.py`: typed actions, reviewer decisions, run records, and tool events.
@@ -121,8 +123,8 @@ data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
 payloads. PostgreSQL persists guideline vectors and the application workflow audit.
 Only selected summary facts are retained, not complete FHIR resources. Human
-approval gates simulated follow-up task creation; authentication, multiple agents,
-a frontend, and real downstream integrations remain future work.
+approval gates simulated follow-up task creation through the API and Streamlit UI;
+authentication, multiple agents, and real downstream integrations remain future work.
 
 ## FHIR scope
 
@@ -261,7 +263,17 @@ Health is liveness only. Invalid requests return 422; unknown records return 404
 review conflicts return 409; invalid agent output returns 502; unavailable
 configuration/dependencies return 503; unexpected errors return a generic 500.
 The documented Uvicorn command binds to loopback. The API flushes standard SDK
-traces on shutdown. There is no frontend or real hospital authentication.
+traces on shutdown. There is no real hospital authentication.
+
+The optional Streamlit UI calls only the existing investigation/review HTTP
+endpoints. It shares request/response models, validates inputs, displays the
+structured summary and source metadata, and records explicit approve/reject
+decisions through FastAPI. The UI stores the selected investigation ID per
+session and reloads backend state on interaction; no global clinical-data cache
+or direct database/FHIR/model access is added. Reviewer identity and patient
+authorization remain server controlled. Pending review can be reopened across
+browser sessions. Backend transactions remain responsible for approval gating
+and duplicate action prevention. Timeouts never cause automatic POST retries.
 
 Offline tests use a test-only store double. Opt-in PostgreSQL tests exercise
 restart/request persistence, actual SDK run audits with a mocked model,
@@ -293,8 +305,8 @@ required for a regulated deployment. No HIPAA certification or compliance is cla
 
 ## Local container deployment
 
-Compose runs `api`, `synthetic-fhir`, `guidelines-db`, and a one-shot `migrate`
-service from the same checkout. Python services share one installed runtime image;
+Compose runs `ui`, `api`, `synthetic-fhir`, `guidelines-db`, and a one-shot `migrate`
+service from the same checkout. Backend Python services share one installed runtime image;
 the FHIR service receives no database password or OpenAI key. The committed
 synthetic Bundle and guideline sources are bundled read-only. PostgreSQL state
 survives container recreation in the existing named volume.
@@ -313,6 +325,14 @@ environment opt-in. The standalone FHIR command still binds loopback by default;
 Compose binds within its container and publishes only to host loopback.
 The image has no source bind mounts or development test dependencies. Ordinary
 Python commands and offline tests remain usable without Docker.
+
+The Streamlit image extends the backend base with separately locked optional UI
+dependencies and an HTTP-only entrypoint. It starts after API health and exposes
+port 8501 on host loopback. It receives only the API URL and request timeout;
+database credentials, model API keys, and development identity configuration
+remain in the backend. Both images run without root privileges or writable
+application filesystems. Streamlit usage telemetry and browser exception details
+are disabled in the supplied launch commands.
 
 ## Safety evaluation boundary
 

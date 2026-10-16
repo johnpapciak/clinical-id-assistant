@@ -26,7 +26,7 @@ docker compose up --build
 ```
 
 Alternatively, use `docker compose up --build -d --wait` to wait for healthy
-services in the background. Compose runs the API, synthetic FHIR server,
+services in the background. Compose runs the Streamlit review UI, API, synthetic FHIR server,
 PostgreSQL/pgvector, and a one-shot `migrate` service that initializes both
 checksummed migration sets. No separate schema initialization is needed on a
 fresh volume. Initialization runs safely again when the migration service runs.
@@ -97,6 +97,13 @@ on these ports at the same time. Set `IDA_API_PORT`, `IDA_FHIR_PORT`, or
 URLs accordingly. Internal service ports stay fixed. Changes to code or bundled fixtures require
 rebuilding; there is no host source mount.
 
+The review UI is at http://127.0.0.1:8501. Set `IDA_UI_PORT` to change its host
+port. Its separate image adds Streamlit; the API/FHIR images retain only backend
+dependencies. The UI receives no OpenAI key or database credentials and sends
+HTTP requests to the API. Both runtime images use hash-locked dependencies;
+`requirements-ui.lock` adds UI packages while preserving `requirements.lock`
+versions. Refresh it with the command in its header.
+
 ```sh
 docker compose down
 ```
@@ -138,12 +145,66 @@ python -m pytest
 
 On Windows, activate with `.venv\Scripts\activate`.
 
+## Review UI demo
+
+Start the stack and ingest the synthetic guidelines using the commands above,
+then open http://127.0.0.1:8501. All displayed clinical information is synthetic;
+the assistant provides demonstration decision support for human review, not
+autonomous medical advice. Investigations use the configured model and can incur
+API usage; the UI never calls OpenAI directly.
+
+1. Enter `PATIENT_001` and `MICRO_001_RECENT`, then click **Investigate**.
+2. Review the structured summary, medications, allergies, labs, prior infections,
+   evidence references, and any cited guideline metadata. Guideline retrieval is
+   optional; an empty list is displayed explicitly.
+3. Read the proposed follow-up action. Status is `awaiting_review`; no task has
+   been created.
+4. Click **Approve**, or enter a note and click **Reject**. Approval of a proposed
+   action creates only a simulated follow-up task. The UI shows the recorded
+   decision, resulting status, and task ID when applicable.
+5. Use **Open an existing investigation** to reopen an investigation UUID or
+   **Load pending reviews** to resume an assigned patient's review in a new session.
+   **Refresh status** reloads the persisted backend state.
+
+Access uses the API's existing `IDA_CURRENT_USER_ID` and
+`IDA_PATIENT_ASSIGNMENTS`; the UI has no identity selector or additional
+authentication. The default reviewer is assigned only `PATIENT_001`. Restart
+the API with different development assignments to review other synthetic
+patients. Identical approval retries remain protected by backend transactions.
+Requests are not retried automatically; after a timeout, check pending reviews
+or reopen the investigation before retrying creation or a decision.
+
+To run Streamlit outside Docker, keep the backend/FHIR/database running, install
+the optional UI dependency, and run from the repository root:
+
+```sh
+python -m pip install -e '.[dev,ui]'
+python -m streamlit run ui/app.py --server.address=127.0.0.1 --server.headless=true --browser.gatherUsageStats=false --client.showErrorDetails=false
+```
+
+`IDA_UI_API_URL` defaults to `http://127.0.0.1:8000`; change it when the backend's
+host port changes. Compose sets `http://api:8000` internally. The URL is server
+configuration, not a browser input. `IDA_UI_TIMEOUT_SECONDS` defaults to 180
+seconds for synchronous investigations. UI errors omit raw backend bodies and
+exception details. No patient payload is cached globally across UI sessions.
+
+Run the UI/client tests after installing the UI extra:
+
+```sh
+python -m pytest tests/test_review_client.py tests/test_review_ui.py
+```
+
+They use Streamlit's
+`AppTest` and FastAPI's test client with mocked model calls; no live API key is
+required. The ordinary backend installation remains `.[dev]`; install `.[dev,ui]`
+to include UI tests in the full suite.
+
 ## Continuous integration
 
 [GitHub Actions CI](https://github.com/johnpapciak/clinical-id-assistant/actions/workflows/ci.yml)
 runs on pull requests and pushes to `main`, using Python 3.12 to match the
 container runtime. It installs the hash-locked runtime dependencies plus development
-tools, checks dependency consistency, runs Ruff, unit tests, the scripted
+and UI tools, checks dependency consistency, runs Ruff, unit/UI tests, the scripted
 evaluation suite, PostgreSQL/pgvector integration tests, and a Docker image build.
 Ruff checks syntax and selected correctness errors; a repository-wide formatting
 change is not required. The workflow does not publish images or deploy anything.
@@ -158,7 +219,8 @@ With the virtual environment active, run the same checks locally:
 
 ```sh
 python -m pip install --require-hashes -r requirements.lock
-python -m pip install -e '.[dev]'
+python -m pip install --require-hashes -r requirements-ui.lock
+python -m pip install -e '.[dev,ui]'
 python -m pip check
 python -m ruff check .
 python -m pytest -m "not integration and not live_api" --junitxml=test-results/unit.xml
@@ -171,6 +233,7 @@ For the database checks, start a disposable PostgreSQL/pgvector database, set
 ```sh
 python -m pytest -m "integration and not live_api" tests/integration --junitxml=test-results/integration.xml
 docker build --tag infectious-disease-assistant:ci .
+docker build --target ui --tag infectious-disease-assistant-ui:ci .
 ```
 
 There are currently no live OpenAI tests. Any future test requiring a live provider
@@ -765,6 +828,6 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and boundaries.
 The current implementation includes local synthetic FHIR retrieval, PostgreSQL/
 pgvector RAG, one agent with structured output and SDK tracing, and a FastAPI
 application boundary with persistent workflow audit, human approval, structured
-safety guardrails, and deterministic/live evaluation commands.
-Authentication, multiple agents, a frontend, and real downstream integrations
+safety guardrails, deterministic/live evaluation commands, and a Streamlit review UI.
+Authentication, multiple agents, and real downstream integrations
 remain future work.
