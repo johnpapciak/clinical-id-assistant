@@ -4,6 +4,9 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 PatientId = Annotated[str, StringConstraints(pattern=r"^PATIENT_[0-9]{3}$")]
+MicrobiologyResultId = Annotated[
+    str, StringConstraints(pattern=r"^(?:MICRO_[0-9]{3}_[A-Z0-9]+|RESULT_[0-9]{3})$"),
+]
 
 
 class HealthcareModel(BaseModel):

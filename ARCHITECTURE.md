@@ -3,7 +3,8 @@
 All patient and lab data must be synthetic. The following flow is a long-term
 design. The current implementation covers typed synthetic data, deterministic
 Python retrieval through a local synthetic FHIR API, and a single coordinator
-agent invoked from a CLI, plus optional PostgreSQL/pgvector guideline retrieval.
+agent invoked from a CLI or FastAPI application service, plus optional
+PostgreSQL/pgvector guideline retrieval.
 
 ```mermaid
 flowchart TD
@@ -17,7 +18,7 @@ flowchart TD
     Approval --> Action["Simulated downstream action"]
 ```
 
-The Python application will own workflow rules and typed inputs and outputs.
+The Python application owns workflow rules and typed inputs and outputs.
 The coordinator will request capabilities through explicitly allowed tools.
 FHIR and retrieval adapters will provide synthetic context. A structured summary
 will separate findings, supporting evidence, and proposed actions. A human must
@@ -27,6 +28,9 @@ approve a proposed action before a simulated downstream action can occur.
 
 - `config.py`: environment-based Pydantic settings.
 - `models/patient.py`: typed clinical domain objects and patient context/summaries.
+- `models/investigation.py`: framework-independent investigation requests/responses and API error schemas.
+- `services/investigations.py`: event validation, coordinator orchestration, and bounded completed-result history.
+- `api.py`: thin FastAPI routes, application-service dependency, HTTP error handling, and lifespan.
 - `models/clinical_summary.py`: structured agent output, record references, and disclaimer.
 - `fhir/client.py`: `httpx` transport, reads/searches, envelope checks, and reference retrieval.
 - `fhir/models.py`: Pydantic models for the supported FHIR R4 resource subset.
@@ -76,7 +80,8 @@ CLI patient ID + microbiology notification
 
 The model sees tool schemas and only the records returned by requested tools.
 Patient selection is injected through local SDK context, not model-generated
-arguments. The services, transport, parsers, and FHIR server import no agent framework code. The SDK runner
+arguments. The patient retrieval services, transport, parsers, and FHIR server import no
+agent framework code. The SDK runner
 handles tool dispatch, continuation, and Pydantic output parsing. Python enforces
 patient scope, a turn limit, failure propagation, the fixed disclaimer, and
 membership of typed clinical facts in the records actually returned by tools.
@@ -91,8 +96,8 @@ validated output. Detailed trace payloads and response storage are enabled for
 synthetic development data. The CLI flushes the SDK's default exporter; there is
 no custom tracing backend. Logs contain event metadata rather than clinical
 payloads. PostgreSQL persists only guideline metadata, chunks, and embeddings;
-patient data and agent sessions are not stored there. FastAPI, multiple agents,
-a frontend, and an approval/action workflow remain future work. This milestone presents information for review without
+patient data and agent sessions are not stored there. Multiple agents,
+a frontend, authentication, and an approval/action workflow remain future work. This milestone presents information for review without
 implementing an approval mechanism or simulated downstream action.
 
 ## FHIR scope
@@ -162,3 +167,54 @@ human review responsibilities. A ranking score is not a confidence estimate.
 Unit tests mock HTTP, embeddings, and PostgreSQL connections. Opt-in integration
 tests use a real PostgreSQL/pgvector database in isolated temporary schemas, with
 deterministic test vectors. No live model or embedding API is required for tests.
+
+## FastAPI boundary and investigation lifecycle
+
+```mermaid
+flowchart TD
+    HTTP["POST /investigations: synthetic patient + result IDs"] --> Validation["FastAPI / Pydantic validation"]
+    Validation --> App["InvestigationService"]
+    App --> Event["FHIR check: patient exists and owns result"]
+    Event --> Agent["Existing single coordinator"]
+    Agent --> Tools["Patient tools and optional guideline tool"]
+    Tools --> Context["Synthetic FHIR API / PostgreSQL pgvector RAG"]
+    Context --> Agent
+    Agent --> Summary["ClinicalSummary with evidence validation"]
+    Summary --> Consistency["Application event/summary consistency check"]
+    Consistency --> History["Bounded process-local completed history"]
+    History --> Created["201 response + UUID + Location"]
+    GET["GET /investigations/UUID"] --> History
+```
+
+The API accepts only synthetic patient/result business identifiers, with extra
+fields rejected. The application service checks result ownership before the
+model runs, passes the selected result to the existing coordinator, and checks
+the returned patient/result metadata against FHIR before recording completion.
+The agent's evidence validation matches the specifically requested result;
+existing CLI calls without an event ID continue to select the newest culture.
+Neither the agent nor the application service imports FastAPI.
+
+POST awaits a completed summary, then returns 201 with a retrieval URL. GET
+returns that response from process-local memory. History retains the latest 100
+completions per service instance, returns independent copies, and disappears on
+restart or eviction. Only successful investigations are stored. It is intentionally
+single-process state; PostgreSQL remains dedicated to guideline metadata, chunks,
+and embeddings. No task queue or durable investigation/session schema is added.
+
+The investigation router contains HTTP translation only. A dependency resolves the
+application service from app state and provides a boundary for future router-level
+authentication. No authentication or frontend is implemented. The documented
+Uvicorn command binds only to loopback. Health is liveness only and requires no
+OpenAI credentials or running FHIR/database service.
+
+Unknown patient, patient-scoped result, and investigation IDs return 404. Invalid
+requests return 422 without echoing raw values. Invalid coordinator summaries
+return 502, unavailable dependencies/configuration return 503, and unexpected
+failures return a generic 500. HTTP errors never expose SDK exception text, API
+keys, or connection URLs. Standard SDK traces are preserved and flushed during
+application shutdown; high-level logs omit clinical payloads and exception text.
+
+Tests cover the application service independently, FastAPI validation and typed
+responses, error sanitization, cache retrieval/eviction, and the actual HTTP-to-SDK
+tool path using mocked FHIR HTTP and model responses. The standalone CLI remains
+a separate entry point and requires no running FastAPI application.

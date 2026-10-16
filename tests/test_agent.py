@@ -255,3 +255,28 @@ def test_rag_database_failure_aborts_sdk_investigation(agent_model, monkeypatch)
         asyncio.run(investigate_patient("PATIENT_001"))
     assert isinstance(caught.value.__cause__, GuidelineDatabaseError)
     assert agent_model.await_count == 2
+
+
+def test_named_historical_microbiology_event_is_investigated(agent_model, make_clinical_summary):
+    expected = make_clinical_summary(tools=["get_microbiology_results"])
+    prior = patients.get_microbiology_results("PATIENT_001")[1]
+    expected.microbiology_result_id, expected.organism, expected.specimen_type = prior.result_id, prior.organism, prior.specimen
+    expected.important_findings[0].evidence[0].record_index = 1
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(expected)]
+    summary = asyncio.run(investigate_patient("PATIENT_001", microbiology_result_id="MICRO_001_PRIOR"))
+    assert summary == expected
+    assert "MICRO_001_PRIOR" in str(agent_model.await_args_list[0].args[1])
+
+
+def test_named_event_cannot_be_silently_replaced_by_newest_result(agent_model, make_clinical_summary):
+    expected = make_clinical_summary(tools=["get_microbiology_results"])
+    agent_model.side_effect = [tool_response(["get_microbiology_results"]), final_response(expected)]
+    with pytest.raises(SummaryEvidenceError, match="requested microbiology result"):
+        asyncio.run(investigate_patient("PATIENT_001", microbiology_result_id="MICRO_001_PRIOR"))
+
+
+def test_malformed_event_id_rejected_before_model(agent_model):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        asyncio.run(investigate_patient("PATIENT_001", microbiology_result_id="real-ehr-id"))
+    agent_model.assert_not_awaited()

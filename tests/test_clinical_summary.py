@@ -161,3 +161,17 @@ def test_json_formatting_is_repeatable_and_preserves_dates(make_clinical_summary
     assert '"collected_on": "2026-10-14"' in formatted
     assert CLINICAL_DISCLAIMER in formatted
     assert ClinicalSummary.model_validate_json(formatted) == summary
+
+
+def test_named_result_must_be_present_in_retrieved_cultures(make_clinical_summary):
+    summary = make_clinical_summary()
+    with pytest.raises(SummaryEvidenceError, match="not uniquely retrieved"):
+        validate_summary_evidence(summary, "PATIENT_001", retrieved_results(), microbiology_result_id="RESULT_999")
+
+
+def test_duplicate_named_results_are_ambiguous(make_clinical_summary):
+    summary = make_clinical_summary()
+    records = retrieved_results()
+    records["get_microbiology_results"] *= 2
+    with pytest.raises(SummaryEvidenceError, match="not uniquely retrieved"):
+        validate_summary_evidence(summary, "PATIENT_001", records, microbiology_result_id="MICRO_001_RECENT")

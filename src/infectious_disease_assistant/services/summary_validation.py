@@ -15,6 +15,8 @@ def validate_summary_evidence(
     summary: ClinicalSummary,
     patient_id: str,
     tool_results: Mapping[ToolName, Sequence[BaseModel]],
+    *,
+    microbiology_result_id: str | None = None,
 ) -> ClinicalSummary:
     if summary.patient_id != patient_id:
         raise SummaryEvidenceError("Summary patient does not match the investigation")
@@ -26,15 +28,22 @@ def validate_summary_evidence(
         raise SummaryEvidenceError("Evidence sources must match the tools actually called")
 
     cultures = tool_results["get_microbiology_results"]
-    latest = cultures[0] if cultures else None
+    if microbiology_result_id is None:
+        selected = cultures[0] if cultures else None
+    else:
+        matches = [item for item in cultures if isinstance(item, MicrobiologyResult) and item.result_id == microbiology_result_id]
+        if len(matches) != 1:
+            raise SummaryEvidenceError("The requested microbiology result was not uniquely retrieved")
+        selected = matches[0]
     expected = (
-        (latest.result_id, latest.organism, latest.specimen)
-        if isinstance(latest, MicrobiologyResult)
+        (selected.result_id, selected.organism, selected.specimen)
+        if isinstance(selected, MicrobiologyResult)
         else (None, None, None)
     )
     observed = (summary.microbiology_result_id, summary.organism, summary.specimen_type)
     if observed != expected:
-        raise SummaryEvidenceError("Microbiology fields must match the newest retrieved result")
+        target = "newest retrieved result" if microbiology_result_id is None else "requested microbiology result"
+        raise SummaryEvidenceError(f"Microbiology fields must match the {target}")
 
     sections: list[tuple[ToolName, Sequence[BaseModel]]] = [
         ("get_medications", summary.relevant_medications),
