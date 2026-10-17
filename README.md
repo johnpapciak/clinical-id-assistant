@@ -1,10 +1,10 @@
 # infectious-disease-assistant
 
-A version 1 demo of an infectious-disease review workflow using **synthetic data
+A prototype for an infectious-disease review workflow using **synthetic data
 only**. A single agent gathers relevant patient context and guideline evidence,
 returns a validated summary, and waits for human review before a simulated
 follow-up task can be created. Never use real protected health information (PHI).
-This is decision support for demonstration, not autonomous medical advice.
+The prototype supports human review and does not provide autonomous medical advice.
 
 ## Problem and approach
 
@@ -15,9 +15,9 @@ different investigation than a no-growth result with sparse records.
 
 An agent can choose which bounded retrieval tools to call and whether guideline
 context is useful. Deterministic Python services remain the source of facts;
-structured validation and a human decision control what follows. This project
-demonstrates that coordination pattern without connecting to an EHR or performing
-clinical treatment actions.
+structured validation and a human decision control what follows. The prototype
+implements this pattern with synthetic FHIR records, summaries grounded in
+retrieved evidence, and simulated follow-up actions that require explicit approval.
 
 ## Architecture
 
@@ -87,8 +87,8 @@ resource types, patient references, and response shapes before mapping them into
 domain models. Agent tools do not read fixture files or expose arbitrary FHIR URLs.
 
 The knowledge base contains three CC0, project-authored synthetic review
-checklists with a provenance manifest. These are demonstration context, not
-clinical guidelines suitable for patient care.
+checklists with a provenance manifest. These provide synthetic retrieval context
+and are not clinical guidelines suitable for patient care.
 
 ```text
 Markdown source → clean text → section-aware word chunks → embeddings
@@ -203,7 +203,7 @@ Model-judged evaluation is kept separate and is not implemented.
 
 Unit tests require no live calls. PostgreSQL integration tests use temporary
 schemas and skip unless `IDA_TEST_DATABASE_URL` points at a disposable pgvector
-database. The full-stack integration demo exercises Streamlit, real FastAPI/FHIR
+database. The full-stack integration test exercises Streamlit, real FastAPI/FHIR
 HTTP, the SDK runner, vector retrieval, persisted review, and duplicate approval
 protection, with scripted model responses and deterministic test embeddings:
 
@@ -228,7 +228,7 @@ parameterized SQL, safe errors, payload avoidance in logs, and approval audits
 illustrate security boundaries; they do not establish compliance.
 [SECURITY.md](SECURITY.md) explains deployment requirements and limitations.
 
-The v1 scope intentionally remains small: one agent, five fixture patients, a
+The prototype scope remains focused: one agent, five fixture patients, a
 limited FHIR subset without pagination, and three synthetic checklists. There is
 no real authentication, background job queue, automatic recovery of interrupted
 runs, or downstream hospital integration. Requests wait synchronously for a run;
@@ -238,16 +238,17 @@ search; no large-scale ranking or clinical adequacy has been established.
 Structured guardrails constrain accepted output but cannot prove that a model
 selected every relevant fact or that a clinician should rely on it.
 
-## What I Learned
+## Project summary
 
-- **Agent orchestration:** one coordinator can choose context retrieval without distributing domain rules across agents.
-- **Controlled tool calling:** narrow schemas and application-bound patient context constrain model access.
-- **FHIR integration:** transport validation and resource parsing belong outside agent definitions.
-- **RAG:** retrieval needs source provenance and relevance checks, not just similar vectors.
-- **Structured outputs:** typed drafts plus evidence validation make unsupported facts testable.
-- **Human approval:** a recorded decision and transactional action gate are stronger than a prompt instruction.
-- **Evaluation:** deterministic pipeline checks and live model assessment answer different questions.
-- **FastAPI:** thin routes keep workflow logic usable from tests and other clients.
-- **PostgreSQL/pgvector:** relational constraints protect workflow state while vectors support guideline search.
-- **Docker:** health checks, migrations, locked dependencies, and explicit ingestion make startup reproducible.
-- **CI:** offline evaluations and disposable databases provide repeatable checks without paid model calls.
+This prototype connects a synthetic microbiology notification to a structured
+clinical summary and a human review workflow. One coordinator selects controlled
+tools to retrieve patient context from a synthetic FHIR API and relevant guideline
+context from PostgreSQL/pgvector. Summaries retain supporting evidence, missing
+information, and proposed follow-up actions for review.
+
+FastAPI and Streamlit provide investigation and review interfaces, while
+PostgreSQL preserves workflow state and audit records. Evidence validation,
+explicit approval, SDK tracing, and deterministic evaluations make the workflow
+inspectable and testable. Docker Compose and CI support reproducible local runs
+and automated checks. All patient data is synthetic, and downstream actions
+remain simulated.
